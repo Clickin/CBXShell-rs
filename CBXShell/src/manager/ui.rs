@@ -10,24 +10,24 @@ use std::cell::{Cell, RefCell};
 const WINDOW_WIDTH: i32 = 360;
 const WINDOW_HEIGHT: i32 = 370;
 
-const MARGIN_X: i32 = 12;
+const MARGIN_X: i32 = 10;
 const STATUS_Y: i32 = 12;
 
 const GROUP_WIDTH: i32 = 320;
-const FILE_GROUP_Y: i32 = 50;
-const FILE_GROUP_HEIGHT: i32 = 145;
-const ADVANCED_GROUP_Y: i32 = FILE_GROUP_Y + FILE_GROUP_HEIGHT + 20;
-const ADVANCED_GROUP_HEIGHT: i32 = 95;
+const FILE_GROUP_Y: i32 = 44;
+const FILE_GROUP_HEIGHT: i32 = 138;
+const ADVANCED_GROUP_Y: i32 = FILE_GROUP_Y + FILE_GROUP_HEIGHT + 10;
+const ADVANCED_GROUP_HEIGHT: i32 = 120;
 
 const BUTTON_WIDTH: i32 = 80;
 const BUTTON_HEIGHT: i32 = 24;
 const BUTTON_SPACING: i32 = 8;
-const BUTTON_Y: i32 = 325;
+const BUTTON_Y: i32 = 320;
 const BUTTON_ROW_X: i32 = WINDOW_WIDTH - MARGIN_X - (BUTTON_WIDTH * 3 + BUTTON_SPACING * 2);
 
 const CHECKBOX_X: i32 = 12;
-const CHECKBOX_Y_START: i32 = 22;
-const CHECKBOX_STEP: i32 = 19;
+const CHECKBOX_Y_START: i32 = 18;
+const CHECKBOX_STEP: i32 = 17;
 
 thread_local! {
     static APP_STATE: RefCell<AppState> = RefCell::new(AppState::default());
@@ -63,11 +63,14 @@ pub struct CBXManagerApp {
     #[nwg_events(OnMenuItemSelected: [CBXManagerApp::on_about])]
     about_menu: nwg::MenuItem,
 
+    #[nwg_resource(family: "Segoe UI", size: 16)]
+    ui_font: nwg::Font,
+
     #[nwg_control(
         parent: window,
         text: "",
         position: (MARGIN_X, STATUS_Y),
-        size: (16, 20)
+        size: (16, 22)
     )]
     status_icon: nwg::Label,
 
@@ -75,7 +78,7 @@ pub struct CBXManagerApp {
         parent: window,
         text: "",
         position: (MARGIN_X + 20, STATUS_Y),
-        size: (280, 20)
+        size: (300, 22)
     )]
     status_text: nwg::Label,
 
@@ -90,8 +93,8 @@ pub struct CBXManagerApp {
     #[nwg_control(
         parent: window,
         text: "File types",
-        position: (MARGIN_X + 8, FILE_GROUP_Y - 10),
-        size: (120, 20)
+        position: (MARGIN_X + 8, FILE_GROUP_Y - 6),
+        size: (120, 24)
     )]
     file_group_label: nwg::Label,
 
@@ -99,7 +102,7 @@ pub struct CBXManagerApp {
         parent: window,
         text: "CBZ Image Archives",
         position: (MARGIN_X + CHECKBOX_X, FILE_GROUP_Y + CHECKBOX_Y_START + (CHECKBOX_STEP * 0)),
-        size: (260, 20)
+        size: (260, 18)
     )]
     cbz_checkbox: nwg::CheckBox,
 
@@ -107,7 +110,7 @@ pub struct CBXManagerApp {
         parent: window,
         text: "ZIP Archives",
         position: (MARGIN_X + CHECKBOX_X, FILE_GROUP_Y + CHECKBOX_Y_START + (CHECKBOX_STEP * 1)),
-        size: (260, 20)
+        size: (260, 18)
     )]
     zip_checkbox: nwg::CheckBox,
 
@@ -115,7 +118,7 @@ pub struct CBXManagerApp {
         parent: window,
         text: "CBR Image Archives",
         position: (MARGIN_X + CHECKBOX_X, FILE_GROUP_Y + CHECKBOX_Y_START + (CHECKBOX_STEP * 2)),
-        size: (260, 20)
+        size: (260, 18)
     )]
     cbr_checkbox: nwg::CheckBox,
 
@@ -123,7 +126,7 @@ pub struct CBXManagerApp {
         parent: window,
         text: "RAR Archives",
         position: (MARGIN_X + CHECKBOX_X, FILE_GROUP_Y + CHECKBOX_Y_START + (CHECKBOX_STEP * 3)),
-        size: (260, 20)
+        size: (260, 18)
     )]
     rar_checkbox: nwg::CheckBox,
 
@@ -131,7 +134,7 @@ pub struct CBXManagerApp {
         parent: window,
         text: "CB7 Image Archives",
         position: (MARGIN_X + CHECKBOX_X, FILE_GROUP_Y + CHECKBOX_Y_START + (CHECKBOX_STEP * 4)),
-        size: (260, 20)
+        size: (260, 18)
     )]
     cb7_checkbox: nwg::CheckBox,
 
@@ -139,7 +142,7 @@ pub struct CBXManagerApp {
         parent: window,
         text: "7Z Archives",
         position: (MARGIN_X + CHECKBOX_X, FILE_GROUP_Y + CHECKBOX_Y_START + (CHECKBOX_STEP * 5)),
-        size: (260, 20)
+        size: (260, 18)
     )]
     sevenz_checkbox: nwg::CheckBox,
 
@@ -154,26 +157,42 @@ pub struct CBXManagerApp {
     #[nwg_control(
         parent: window,
         text: "Advanced",
-        position: (MARGIN_X + 8, ADVANCED_GROUP_Y - 10),
-        size: (120, 20)
+        position: (MARGIN_X + 8, ADVANCED_GROUP_Y - 6),
+        size: (120, 24)
     )]
     advanced_group_label: nwg::Label,
 
     #[nwg_control(
         parent: window,
         text: "Sort images alphabetically",
-        position: (MARGIN_X + CHECKBOX_X, ADVANCED_GROUP_Y + 18),
-        size: (260, 20)
+        position: (MARGIN_X + CHECKBOX_X, ADVANCED_GROUP_Y + 16),
+        size: (260, 18)
     )]
     sort_checkbox: nwg::CheckBox,
 
     #[nwg_control(
         parent: window,
         text: "Uncheck to sort images by archive order.\r\nRequired to display custom thumbnail.",
-        position: (MARGIN_X + CHECKBOX_X, ADVANCED_GROUP_Y + 40),
-        size: (300, 40)
+        position: (MARGIN_X + CHECKBOX_X, ADVANCED_GROUP_Y + 34),
+        size: (300, 28)
     )]
     sort_help_label: nwg::Label,
+
+    #[nwg_control(
+        parent: window,
+        text: "Sort preview pages alphabetically",
+        position: (MARGIN_X + CHECKBOX_X, ADVANCED_GROUP_Y + 68),
+        size: (300, 18)
+    )]
+    sort_preview_checkbox: nwg::CheckBox,
+
+    #[nwg_control(
+        parent: window,
+        text: "Uncheck to use archive order in the preview pane.",
+        position: (MARGIN_X + CHECKBOX_X, ADVANCED_GROUP_Y + 86),
+        size: (300, 20)
+    )]
+    sort_preview_help_label: nwg::Label,
 
     #[nwg_control(
         parent: window,
@@ -209,6 +228,7 @@ impl CBXManagerApp {
         APP_STATE.with(|stored| {
             *stored.borrow_mut() = state;
         });
+        self.apply_font();
         self.sync_controls_from_state();
     }
 
@@ -230,6 +250,7 @@ impl CBXManagerApp {
         self.set_checkbox(&self.cb7_checkbox, self.extension_enabled(&state, ".cb7"));
         self.set_checkbox(&self.sevenz_checkbox, self.extension_enabled(&state, ".7z"));
         self.set_checkbox(&self.sort_checkbox, state.sort_enabled);
+        self.set_checkbox(&self.sort_preview_checkbox, state.sort_preview_enabled);
     }
 
     fn extension_enabled(&self, state: &AppState, extension: &str) -> bool {
@@ -237,6 +258,28 @@ impl CBXManagerApp {
             .get_extension(extension)
             .map(|ext| ext.thumbnail_enabled)
             .unwrap_or(false)
+    }
+
+    fn apply_font(&self) {
+        let font = Some(&self.ui_font);
+
+        self.status_icon.set_font(font);
+        self.status_text.set_font(font);
+        self.file_group_label.set_font(font);
+        self.cbz_checkbox.set_font(font);
+        self.zip_checkbox.set_font(font);
+        self.cbr_checkbox.set_font(font);
+        self.rar_checkbox.set_font(font);
+        self.cb7_checkbox.set_font(font);
+        self.sevenz_checkbox.set_font(font);
+        self.advanced_group_label.set_font(font);
+        self.sort_checkbox.set_font(font);
+        self.sort_help_label.set_font(font);
+        self.sort_preview_checkbox.set_font(font);
+        self.sort_preview_help_label.set_font(font);
+        self.ok_button.set_font(font);
+        self.cancel_button.set_font(font);
+        self.apply_button.set_font(font);
     }
 
     fn set_checkbox(&self, checkbox: &nwg::CheckBox, enabled: bool) {
@@ -256,6 +299,7 @@ impl CBXManagerApp {
         let mut state = self.get_state();
 
         state.sort_enabled = self.checkbox_value(&self.sort_checkbox);
+        state.sort_preview_enabled = self.checkbox_value(&self.sort_preview_checkbox);
 
         if let Some(ext) = state.get_extension_mut(".cbz") {
             ext.thumbnail_enabled = self.checkbox_value(&self.cbz_checkbox);

@@ -1,11 +1,10 @@
 ///! Registry operations for CBXManager
 ///!
 ///! Read and write configuration from/to Windows registry
-
 use super::state::AppState;
 use anyhow::{Context, Result};
-use winreg::RegKey;
 use winreg::enums::*;
+use winreg::RegKey;
 
 /// CBXShell CLSID string
 const CLSID_STR: &str = "{9E6ECB90-5A61-42BD-B851-D3297D9C7F39}";
@@ -28,6 +27,7 @@ pub fn read_app_state() -> Result<AppState> {
 
     // 2. Read sort setting
     state.sort_enabled = read_sort_setting()?;
+    state.sort_preview_enabled = read_sort_preview_setting()?;
 
     // 3. Check each extension's handler registration
     for ext_config in &mut state.extensions {
@@ -41,8 +41,9 @@ pub fn read_app_state() -> Result<AppState> {
 
 /// Write application state to registry
 pub fn write_app_state(state: &AppState) -> Result<()> {
-    // 1. Write sort setting
+    // 1. Write sort settings
     write_sort_setting(state.sort_enabled)?;
+    write_sort_preview_setting(state.sort_preview_enabled)?;
 
     // 2. Update extension handlers
     for ext_config in &state.extensions {
@@ -106,7 +107,8 @@ fn set_extension_handlers(extension: &str, thumbnail: bool, infotip: bool) -> Re
     let (ext_key, _) = hkcu
         .create_subkey(&base_path)
         .context("Failed to create extension key")?;
-    ext_key.set_value("PerceivedType", &"image")
+    ext_key
+        .set_value("PerceivedType", &"image")
         .context("Failed to set PerceivedType")?;
 
     // Create shellex key
@@ -120,7 +122,8 @@ fn set_extension_handlers(extension: &str, thumbnail: bool, infotip: bool) -> Re
         let (thumb_key, _) = hkcu
             .create_subkey(&thumbnail_path)
             .context("Failed to create thumbnail key")?;
-        thumb_key.set_value("", &CLSID_STR)
+        thumb_key
+            .set_value("", &CLSID_STR)
             .context("Failed to set thumbnail CLSID")?;
     } else {
         // Remove thumbnail handler
@@ -133,7 +136,8 @@ fn set_extension_handlers(extension: &str, thumbnail: bool, infotip: bool) -> Re
         let (info_key, _) = hkcu
             .create_subkey(&infotip_path)
             .context("Failed to create infotip key")?;
-        info_key.set_value("", &CLSID_STR)
+        info_key
+            .set_value("", &CLSID_STR)
             .context("Failed to set infotip CLSID")?;
     } else {
         // Remove infotip handler
@@ -150,11 +154,24 @@ fn read_sort_setting() -> Result<bool> {
     match hkcu.open_subkey(CONFIG_KEY_PATH) {
         Ok(key) => {
             match key.get_value::<u32, _>("NoSort") {
-                Ok(value) => Ok(value == 0),  // NoSort=0 means sort enabled
-                Err(_) => Ok(false),  // Default: sorting disabled (NoSort=1) for better performance
+                Ok(value) => Ok(value == 0), // NoSort=0 means sort enabled
+                Err(_) => Ok(false), // Default: sorting disabled (NoSort=1) for better performance
             }
         }
-        Err(_) => Ok(false),  // Default: sorting disabled (NoSort=1) for better performance
+        Err(_) => Ok(false), // Default: sorting disabled (NoSort=1) for better performance
+    }
+}
+
+/// Read the preview sorting preference from registry
+fn read_sort_preview_setting() -> Result<bool> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+
+    match hkcu.open_subkey(CONFIG_KEY_PATH) {
+        Ok(key) => match key.get_value::<u32, _>("NoSortPreview") {
+            Ok(value) => Ok(value == 0),
+            Err(_) => Ok(false),
+        },
+        Err(_) => Ok(false),
     }
 }
 
@@ -172,6 +189,20 @@ fn write_sort_setting(sort_enabled: bool) -> Result<()> {
     Ok(())
 }
 
+/// Write the preview sorting preference to registry
+fn write_sort_preview_setting(sort_enabled: bool) -> Result<()> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let (key, _) = hkcu
+        .create_subkey(CONFIG_KEY_PATH)
+        .context("Failed to create config key")?;
+
+    let no_sort_value: u32 = if sort_enabled { 0 } else { 1 };
+    key.set_value("NoSortPreview", &no_sort_value)
+        .context("Failed to set NoSortPreview value")?;
+
+    Ok(())
+}
+
 /// Register the DLL as a COM server
 ///
 /// This function calls the library's register_server function directly.
@@ -179,9 +210,9 @@ fn write_sort_setting(sort_enabled: bool) -> Result<()> {
 /// we need to access it through cbxshell:: path.
 pub fn register_dll() -> Result<()> {
     // Get the path to cbxshell.dll (should be in the same directory as the manager)
-    let exe_path = std::env::current_exe()
-        .context("Failed to get current executable path")?;
-    let exe_dir = exe_path.parent()
+    let exe_path = std::env::current_exe().context("Failed to get current executable path")?;
+    let exe_dir = exe_path
+        .parent()
         .context("Failed to get executable directory")?;
     let dll_path = exe_dir.join("cbxshell.dll");
 
@@ -194,7 +225,8 @@ pub fn register_dll() -> Result<()> {
     }
 
     // Convert to string
-    let dll_path_str = dll_path.to_str()
+    let dll_path_str = dll_path
+        .to_str()
         .context("Failed to convert DLL path to string")?;
 
     cbxshell::registry::register_server(Some(dll_path_str))

@@ -3,7 +3,7 @@ members = ["CBXShell"]
 resolver = "2"
 
 [workspace.package]
-version = "5.1.0"
+version = "5.1.1"
 authors = ["CBXShell Contributors"]
 edition = "2021"
 license = "CPOL-1.02"
@@ -47,11 +47,8 @@ winreg = "0.52"
 widestring = "1.0"
 
 # GUI framework (for manager binary)
-egui = "0.28"
-eframe = { version = "0.28", default-features = false, features = [
-    "default_fonts",
-    "glow",
-] }
+native-windows-gui = "1.0.13"
+native-windows-derive = "1.0.3"
 
 # Error handling
 anyhow = "1.0"

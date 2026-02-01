@@ -51,3 +51,7 @@ CLAUDE.md
 *.analysis.md
 *_ANALYSIS.md
 *_OPTIMIZATION.md
+
+# node related
+node_modules/
+/docs/node_modules/

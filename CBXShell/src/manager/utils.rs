@@ -1,8 +1,9 @@
 ///! Utility functions for CBXManager
 ///!
 ///! Helper functions for Explorer restart and other operations
-
-use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONQUESTION, MB_ICONINFORMATION, MB_ICONERROR, MB_YESNO, MB_OK, IDYES};
+use windows::Win32::UI::WindowsAndMessaging::{
+    MessageBoxW, IDYES, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONQUESTION, MB_OK, MB_YESNO,
+};
 
 /// Prompt user to restart Explorer to apply changes
 pub fn prompt_restart_explorer() -> bool {

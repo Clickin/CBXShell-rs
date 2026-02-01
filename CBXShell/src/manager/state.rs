@@ -41,6 +41,8 @@ pub struct AppState {
     pub extensions: Vec<ExtensionConfig>,
     /// Whether alphabetical sorting is enabled (true) or first-found mode (false)
     pub sort_enabled: bool,
+    /// Whether preview pages are sorted alphabetically
+    pub sort_preview_enabled: bool,
     /// Whether the DLL is registered as a COM server
     pub dll_registered: bool,
 }
@@ -56,7 +58,8 @@ impl Default for AppState {
                 ExtensionConfig::new(".7z"),
                 ExtensionConfig::new(".cb7"),
             ],
-            sort_enabled: false,  // Default: sort disabled (NoSort=1) for better performance with large archives
+            sort_enabled: false, // Default: sort disabled (NoSort=1) for better performance with large archives
+            sort_preview_enabled: false,
             dll_registered: false,
         }
     }
@@ -65,24 +68,30 @@ impl Default for AppState {
 impl AppState {
     /// Check if any extension has handlers enabled
     pub fn has_any_handlers_enabled(&self) -> bool {
-        self.extensions.iter().any(|ext| ext.thumbnail_enabled || ext.infotip_enabled)
+        self.extensions
+            .iter()
+            .any(|ext| ext.thumbnail_enabled || ext.infotip_enabled)
     }
 
     /// Get extension config by extension name
     #[allow(dead_code)] // Part of public API, may be used in future
     pub fn get_extension(&self, extension: &str) -> Option<&ExtensionConfig> {
-        self.extensions.iter().find(|ext| ext.extension == extension)
+        self.extensions
+            .iter()
+            .find(|ext| ext.extension == extension)
     }
 
     /// Get mutable extension config by extension name
     pub fn get_extension_mut(&mut self, extension: &str) -> Option<&mut ExtensionConfig> {
-        self.extensions.iter_mut().find(|ext| ext.extension == extension)
+        self.extensions
+            .iter_mut()
+            .find(|ext| ext.extension == extension)
     }
 
     /// Validate state (ensure DLL is registered if handlers are enabled)
     pub fn is_valid(&self) -> bool {
         if self.has_any_handlers_enabled() && !self.dll_registered {
-            return false;  // Can't have handlers without DLL registration
+            return false; // Can't have handlers without DLL registration
         }
         true
     }
@@ -112,7 +121,7 @@ mod tests {
     fn test_app_state_default() {
         let state = AppState::default();
         assert_eq!(state.extensions.len(), 6);
-        assert!(!state.sort_enabled);  // Default: sort disabled for performance
+        assert!(!state.sort_enabled); // Default: sort disabled for performance
         assert!(!state.dll_registered);
         assert!(!state.has_any_handlers_enabled());
     }
@@ -152,12 +161,12 @@ mod tests {
     #[test]
     fn test_is_valid() {
         let mut state = AppState::default();
-        assert!(state.is_valid());  // No handlers, no DLL - valid
+        assert!(state.is_valid()); // No handlers, no DLL - valid
 
         state.extensions[0].thumbnail_enabled = true;
-        assert!(!state.is_valid());  // Handlers but no DLL - invalid
+        assert!(!state.is_valid()); // Handlers but no DLL - invalid
 
         state.dll_registered = true;
-        assert!(state.is_valid());  // Handlers with DLL - valid
+        assert!(state.is_valid()); // Handlers with DLL - valid
     }
 }
