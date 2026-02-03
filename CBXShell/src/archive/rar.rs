@@ -1,16 +1,15 @@
 ///! RAR/CBR archive implementation
 ///!
 ///! Supports RAR and CBR formats using the `unrar` crate
-
 use std::fs::File;
-use std::io::{Write as IoWrite, Read};
-use std::path::{Path, PathBuf};
 use std::hash::BuildHasher;
+use std::io::{Read, Write as IoWrite};
+use std::path::{Path, PathBuf};
 use unrar::Archive as UnrarArchive;
 
+use super::utils::{find_first_image, is_image_file, MAX_ENTRY_SIZE};
 use crate::archive::{Archive, ArchiveEntry, ArchiveMetadata, ArchiveType};
 use crate::utils::error::{CbxError, Result};
-use super::utils::{is_image_file, find_first_image, MAX_ENTRY_SIZE};
 
 /// RAR archive handler
 pub struct RarArchive {
@@ -59,8 +58,8 @@ impl RarArchive {
         let mut entries = Vec::new();
 
         for entry_result in archive {
-            let entry = entry_result
-                .map_err(|e| CbxError::Archive(format!("RAR entry error: {:?}", e)))?;
+            let entry =
+                entry_result.map_err(|e| CbxError::Archive(format!("RAR entry error: {:?}", e)))?;
 
             // Get filename from entry
             let filename = entry.filename.to_string_lossy().to_string();
@@ -91,7 +90,9 @@ impl Archive for RarArchive {
 
             let archive = UnrarArchive::new(&self.path)
                 .open_for_listing()
-                .map_err(|e| CbxError::Archive(format!("Failed to open RAR for listing: {:?}", e)))?;
+                .map_err(|e| {
+                    CbxError::Archive(format!("Failed to open RAR for listing: {:?}", e))
+                })?;
 
             for entry_result in archive {
                 let entry = entry_result
@@ -137,7 +138,11 @@ impl Archive for RarArchive {
 
         // Safety check: prevent memory exhaustion (32MB limit)
         if entry.size > MAX_ENTRY_SIZE {
-            tracing::warn!("Entry too large: {} bytes (max {})", entry.size, MAX_ENTRY_SIZE);
+            tracing::warn!(
+                "Entry too large: {} bytes (max {})",
+                entry.size,
+                MAX_ENTRY_SIZE
+            );
             return Err(CbxError::Archive(format!(
                 "Entry too large: {} bytes (max 32MB)",
                 entry.size
@@ -146,7 +151,9 @@ impl Archive for RarArchive {
 
         let mut archive = UnrarArchive::new(&self.path)
             .open_for_processing()
-            .map_err(|e| CbxError::Archive(format!("Failed to open RAR for processing: {:?}", e)))?;
+            .map_err(|e| {
+                CbxError::Archive(format!("Failed to open RAR for processing: {:?}", e))
+            })?;
 
         let mut extracted_data = None;
 
@@ -158,18 +165,18 @@ impl Archive for RarArchive {
 
                     if current_name == entry.name {
                         // Extract to memory
-                        let (data, _) = header
-                            .read()
-                            .map_err(|e| CbxError::Archive(format!("Failed to extract RAR entry: {:?}", e)))?;
+                        let (data, _) = header.read().map_err(|e| {
+                            CbxError::Archive(format!("Failed to extract RAR entry: {:?}", e))
+                        })?;
 
                         tracing::debug!("Extracted {} bytes from RAR", data.len());
                         extracted_data = Some(data);
                         break;
                     } else {
                         // Skip this entry and continue with next archive state
-                        archive = header
-                            .skip()
-                            .map_err(|e| CbxError::Archive(format!("Failed to skip RAR entry: {:?}", e)))?;
+                        archive = header.skip().map_err(|e| {
+                            CbxError::Archive(format!("Failed to skip RAR entry: {:?}", e))
+                        })?;
                     }
                 }
                 Ok(None) => {
@@ -177,14 +184,16 @@ impl Archive for RarArchive {
                     break;
                 }
                 Err(e) => {
-                    return Err(CbxError::Archive(format!("Failed to read RAR header: {:?}", e)));
+                    return Err(CbxError::Archive(format!(
+                        "Failed to read RAR header: {:?}",
+                        e
+                    )));
                 }
             }
         }
 
-        extracted_data.ok_or_else(|| {
-            CbxError::Archive(format!("Entry not found in RAR: {}", entry.name))
-        })
+        extracted_data
+            .ok_or_else(|| CbxError::Archive(format!("Entry not found in RAR: {}", entry.name)))
     }
 
     fn get_metadata(&self) -> Result<ArchiveMetadata> {
@@ -192,9 +201,7 @@ impl Archive for RarArchive {
         let total_files = entries.len();
         let image_count = entries.iter().filter(|e| is_image_file(&e.name)).count();
 
-        let compressed_size = std::fs::metadata(&self.path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let compressed_size = std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
 
         tracing::debug!(
             "RAR metadata: {} files, {} images, {} bytes",
@@ -222,70 +229,6 @@ pub struct RarArchiveFromMemory {
 }
 
 impl RarArchiveFromMemory {
-    /// Create a RAR archive from in-memory data
-    ///
-    /// Since the unrar crate requires a file path, we temporarily write
-    /// the data to disk. This is necessary because RAR uses a C library
-    /// that doesn't support streaming.
-    pub fn new(data: Vec<u8>) -> Result<Self> {
-        tracing::debug!("Creating RAR archive from memory ({} bytes)", data.len());
-
-        // Create temporary file with unique name to prevent race conditions
-        // Use process ID + thread ID + timestamp + random to ensure uniqueness
-        // This prevents multiple simultaneous thumbnail requests from conflicting
-        let temp_dir = std::env::temp_dir();
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
-        let random: u32 = std::collections::hash_map::RandomState::new()
-            .hash_one(timestamp) as u32;
-        let thread_id = std::thread::current().id();
-        let temp_filename = format!("cbxshell_rar_{}_{:?}_{}_{}_{:08x}.tmp",
-            std::process::id(),
-            thread_id,
-            timestamp,
-            data.len(),  // Add data length to further reduce collision chance
-            random
-        );
-        let temp_path = temp_dir.join(temp_filename);
-
-        // Write data to temp file
-        let mut file = File::create(&temp_path)
-            .map_err(|e| CbxError::Archive(format!("Failed to create temp RAR file: {}", e)))?;
-
-        file.write_all(&data)
-            .map_err(|e| CbxError::Archive(format!("Failed to write temp RAR file: {}", e)))?;
-
-        file.sync_all()
-            .map_err(|e| CbxError::Archive(format!("Failed to sync temp RAR file: {}", e)))?;
-
-        drop(file);
-
-        // Validate the temp file is a valid RAR
-        let _test = UnrarArchive::new(&temp_path)
-            .open_for_listing()
-            .map_err(|e| {
-                // Clean up temp file on error
-                let _ = std::fs::remove_file(&temp_path);
-
-                // Check if this is a password-protected archive
-                let error_msg = format!("{:?}", e);
-                if error_msg.contains("password") || error_msg.contains("encrypted") || error_msg.contains("BadPassword") {
-                    tracing::info!("Skipping password-protected RAR archive");
-                    crate::utils::debug_log::debug_log("RAR archive is password-protected - skipping");
-                    CbxError::Archive("Password-protected RAR archive (not supported)".to_string())
-                } else {
-                    tracing::warn!("Invalid RAR data: {:?}", e);
-                    CbxError::Archive(format!("Invalid RAR data: {:?}", e))
-                }
-            })?;
-
-        tracing::debug!("Temporary RAR file created: {:?}", temp_path);
-
-        Ok(Self { temp_path })
-    }
-
     /// Create a RAR archive from a streaming reader (OPTIMIZED)
     ///
     /// This version streams data directly from the reader to a temp file
@@ -303,7 +246,9 @@ impl RarArchiveFromMemory {
     /// * `Err(CbxError)` - If writing or validation fails
     pub fn new_from_stream<R: Read>(mut reader: R) -> Result<Self> {
         tracing::debug!("Creating RAR archive from stream (optimized)");
-        crate::utils::debug_log::debug_log(">>>>> RarArchiveFromMemory::new_from_stream STARTING <<<<<");
+        crate::utils::debug_log::debug_log(
+            ">>>>> RarArchiveFromMemory::new_from_stream STARTING <<<<<",
+        );
 
         // Create temporary file with unique name
         let temp_dir = std::env::temp_dir();
@@ -311,10 +256,10 @@ impl RarArchiveFromMemory {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis();
-        let random: u32 = std::collections::hash_map::RandomState::new()
-            .hash_one(timestamp) as u32;
+        let random: u32 = std::collections::hash_map::RandomState::new().hash_one(timestamp) as u32;
         let thread_id = std::thread::current().id();
-        let temp_filename = format!("cbxshell_rar_stream_{}_{:?}_{}_{:08x}.tmp",
+        let temp_filename = format!(
+            "cbxshell_rar_stream_{}_{:?}_{}_{:08x}.tmp",
             std::process::id(),
             thread_id,
             timestamp,
@@ -347,7 +292,10 @@ impl RarArchiveFromMemory {
 
             if total_written % (10 * 1024 * 1024) == 0 {
                 // Log every 10MB
-                crate::utils::debug_log::debug_log(&format!("Streamed {} MB to temp file", total_written / (1024 * 1024)));
+                crate::utils::debug_log::debug_log(&format!(
+                    "Streamed {} MB to temp file",
+                    total_written / (1024 * 1024)
+                ));
             }
         }
 
@@ -367,9 +315,14 @@ impl RarArchiveFromMemory {
 
                 // Check if this is a password-protected archive
                 let error_msg = format!("{:?}", e);
-                if error_msg.contains("password") || error_msg.contains("encrypted") || error_msg.contains("BadPassword") {
+                if error_msg.contains("password")
+                    || error_msg.contains("encrypted")
+                    || error_msg.contains("BadPassword")
+                {
                     tracing::info!("Skipping password-protected RAR archive");
-                    crate::utils::debug_log::debug_log("RAR archive is password-protected - skipping");
+                    crate::utils::debug_log::debug_log(
+                        "RAR archive is password-protected - skipping",
+                    );
                     CbxError::Archive("Password-protected RAR archive (not supported)".to_string())
                 } else {
                     tracing::warn!("Invalid RAR data: {:?}", e);
@@ -378,7 +331,9 @@ impl RarArchiveFromMemory {
             })?;
 
         tracing::debug!("Temporary RAR file created from stream: {:?}", temp_path);
-        crate::utils::debug_log::debug_log(">>>>> RarArchiveFromMemory::new_from_stream COMPLETED <<<<<");
+        crate::utils::debug_log::debug_log(
+            ">>>>> RarArchiveFromMemory::new_from_stream COMPLETED <<<<<",
+        );
 
         Ok(Self { temp_path })
     }
@@ -392,8 +347,8 @@ impl RarArchiveFromMemory {
         let mut entries = Vec::new();
 
         for entry_result in archive {
-            let entry = entry_result
-                .map_err(|e| CbxError::Archive(format!("RAR entry error: {:?}", e)))?;
+            let entry =
+                entry_result.map_err(|e| CbxError::Archive(format!("RAR entry error: {:?}", e)))?;
 
             let filename = entry.filename.to_string_lossy().to_string();
 
@@ -424,7 +379,9 @@ impl Drop for RarArchiveFromMemory {
 impl Archive for RarArchiveFromMemory {
     fn open(_path: &Path) -> Result<Box<dyn Archive>> {
         // Not used for in-memory archives
-        Err(CbxError::Archive("Use open_archive_from_memory instead".to_string()))
+        Err(CbxError::Archive(
+            "Use open_archive_from_stream instead".to_string(),
+        ))
     }
 
     fn find_first_image(&self, sort: bool) -> Result<ArchiveEntry> {
@@ -436,7 +393,9 @@ impl Archive for RarArchiveFromMemory {
 
             let archive = UnrarArchive::new(&self.temp_path)
                 .open_for_listing()
-                .map_err(|e| CbxError::Archive(format!("Failed to open RAR for listing: {:?}", e)))?;
+                .map_err(|e| {
+                    CbxError::Archive(format!("Failed to open RAR for listing: {:?}", e))
+                })?;
 
             for entry_result in archive {
                 let entry = entry_result
@@ -478,11 +437,19 @@ impl Archive for RarArchiveFromMemory {
     }
 
     fn extract_entry(&self, entry: &ArchiveEntry) -> Result<Vec<u8>> {
-        tracing::debug!("Extracting entry from memory: {} ({} bytes)", entry.name, entry.size);
+        tracing::debug!(
+            "Extracting entry from memory: {} ({} bytes)",
+            entry.name,
+            entry.size
+        );
 
         // Safety check: prevent memory exhaustion
         if entry.size > MAX_ENTRY_SIZE {
-            tracing::warn!("Entry too large: {} bytes (max {})", entry.size, MAX_ENTRY_SIZE);
+            tracing::warn!(
+                "Entry too large: {} bytes (max {})",
+                entry.size,
+                MAX_ENTRY_SIZE
+            );
             return Err(CbxError::Archive(format!(
                 "Entry too large: {} bytes (max 32MB)",
                 entry.size
@@ -491,7 +458,9 @@ impl Archive for RarArchiveFromMemory {
 
         let mut archive = UnrarArchive::new(&self.temp_path)
             .open_for_processing()
-            .map_err(|e| CbxError::Archive(format!("Failed to open RAR for processing: {:?}", e)))?;
+            .map_err(|e| {
+                CbxError::Archive(format!("Failed to open RAR for processing: {:?}", e))
+            })?;
 
         let mut extracted_data = None;
 
@@ -503,18 +472,18 @@ impl Archive for RarArchiveFromMemory {
 
                     if current_name == entry.name {
                         // Extract to memory
-                        let (data, _) = header
-                            .read()
-                            .map_err(|e| CbxError::Archive(format!("Failed to extract RAR entry: {:?}", e)))?;
+                        let (data, _) = header.read().map_err(|e| {
+                            CbxError::Archive(format!("Failed to extract RAR entry: {:?}", e))
+                        })?;
 
                         tracing::debug!("Extracted {} bytes from RAR", data.len());
                         extracted_data = Some(data);
                         break;
                     } else {
                         // Skip this entry and continue with next archive state
-                        archive = header
-                            .skip()
-                            .map_err(|e| CbxError::Archive(format!("Failed to skip RAR entry: {:?}", e)))?;
+                        archive = header.skip().map_err(|e| {
+                            CbxError::Archive(format!("Failed to skip RAR entry: {:?}", e))
+                        })?;
                     }
                 }
                 Ok(None) => {
@@ -522,14 +491,16 @@ impl Archive for RarArchiveFromMemory {
                     break;
                 }
                 Err(e) => {
-                    return Err(CbxError::Archive(format!("Failed to read RAR header: {:?}", e)));
+                    return Err(CbxError::Archive(format!(
+                        "Failed to read RAR header: {:?}",
+                        e
+                    )));
                 }
             }
         }
 
-        extracted_data.ok_or_else(|| {
-            CbxError::Archive(format!("Entry not found in RAR: {}", entry.name))
-        })
+        extracted_data
+            .ok_or_else(|| CbxError::Archive(format!("Entry not found in RAR: {}", entry.name)))
     }
 
     fn get_metadata(&self) -> Result<ArchiveMetadata> {

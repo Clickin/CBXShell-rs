@@ -1,0 +1,16 @@
+---
+title: 로깅
+description: 디버그 로그 위치.
+---
+
+CBXShell은 문제 진단을 위해 임시 파일에 디버그 로그를 기록합니다:
+
+```cmd
+C:\Users\<username>\AppData\Local\Temp\cbxshell_debug.log
+```
+
+PowerShell에서 실시간 확인:
+
+```powershell
+Get-Content "$env:TEMP\cbxshell_debug.log" -Wait
+```

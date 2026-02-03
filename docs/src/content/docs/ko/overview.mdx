@@ -1,0 +1,19 @@
+---
+title: 개요
+description: CBXShell이 하는 일과 필요한 이유.
+---
+
+CBXShell은 만화책 아카이브(`.cbz`, `.cbr`, `.cb7`)와 이미지가 포함된
+일반 ZIP/RAR/7z 아카이브에 대해 고품질 썸네일을 제공하는
+현대적인 Windows 셸 확장입니다.
+
+T800 Productions의 기존 C++ CBXShell 프로젝트를 Rust로 재구현했으며,
+Windows 11 호환성, 최신 이미지 포맷 지원, 메모리 안전성에 초점을 맞췄습니다.
+
+## 주요 특징
+
+- `IThumbnailProvider` 기반의 네이티브 썸네일 핸들러
+- `IInitializeWithStream`을 사용하는 스트림 기반 아카이브 처리
+- WebP 및 AVIF 디코딩 지원
+- `fast_image_resize` 기반의 고품질 리사이징
+- 매니저 앱으로 정렬/핸들러 설정 가능

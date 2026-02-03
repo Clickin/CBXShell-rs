@@ -1,9 +1,8 @@
+use winreg::enums::*;
 ///! Configuration management for archive processing
 ///!
 ///! Reads settings from the Windows registry
-
 use winreg::RegKey;
-use winreg::enums::*;
 
 const CONFIG_KEY_PATH: &str = "Software\\CBXShell-rs\\{9E6ECB90-5A61-42BD-B851-D3297D9C7F39}";
 const NO_SORT_VALUE: &str = "NoSort";
@@ -18,7 +17,7 @@ const NO_SORT_VALUE: &str = "NoSort";
 /// - Value 1 or missing = sort disabled (false, default)
 pub fn should_sort_images() -> bool {
     match read_no_sort_setting() {
-        Ok(no_sort) => !no_sort,  // Invert: NoSort=0 means sort=true
+        Ok(no_sort) => !no_sort, // Invert: NoSort=0 means sort=true
         Err(_) => {
             // Default to NOT sorting for better performance with large archives
             tracing::debug!("Failed to read NoSort setting, defaulting to unsorted mode (fast)");
@@ -37,11 +36,11 @@ fn read_no_sort_setting() -> Result<bool, std::io::Error> {
     match hkcu.open_subkey(CONFIG_KEY_PATH) {
         Ok(key) => {
             match key.get_value::<u32, _>(NO_SORT_VALUE) {
-                Ok(value) => Ok(value != 0),  // NonZero = true (don't sort)
-                Err(_) => Ok(true),  // Missing value = true (don't sort, for performance)
+                Ok(value) => Ok(value != 0), // NonZero = true (don't sort)
+                Err(_) => Ok(true),          // Missing value = true (don't sort, for performance)
             }
         }
-        Err(_) => Ok(true),  // Missing key = true (don't sort, for performance)
+        Err(_) => Ok(true), // Missing key = true (don't sort, for performance)
     }
 }
 
@@ -69,7 +68,7 @@ mod tests {
         // Should default to sorting if key doesn't exist
         // (This test will pass even if registry key exists)
         let result = should_sort_images();
-        assert!(result == true || result == false);  // Just verify it doesn't crash
+        assert!(result == true || result == false); // Just verify it doesn't crash
     }
 
     #[test]

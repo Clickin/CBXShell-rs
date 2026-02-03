@@ -1,15 +1,14 @@
+use sevenz_rust::{Password, SevenZReader};
 ///! 7-Zip archive implementation
 ///!
 ///! Supports 7z and CB7 formats using the `sevenz-rust` crate
-
 use std::fs::File;
-use std::io::{Cursor, Read, Seek};
+use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
-use sevenz_rust::{SevenZReader, Password};
 
+use super::utils::{find_first_image, is_image_file, MAX_ENTRY_SIZE};
 use crate::archive::{Archive, ArchiveEntry, ArchiveMetadata, ArchiveType};
 use crate::utils::error::{CbxError, Result};
-use super::utils::{is_image_file, find_first_image, MAX_ENTRY_SIZE};
 
 /// 7-Zip archive handler
 pub struct SevenZipArchive {
@@ -25,7 +24,8 @@ impl SevenZipArchive {
         let file = File::open(path)
             .map_err(|e| CbxError::Archive(format!("Failed to open 7z file: {}", e)))?;
 
-        let file_len = file.metadata()
+        let file_len = file
+            .metadata()
             .map_err(|e| CbxError::Archive(format!("Failed to get file metadata: {}", e)))?
             .len();
 
@@ -43,7 +43,8 @@ impl SevenZipArchive {
         let file = File::open(&self.path)
             .map_err(|e| CbxError::Archive(format!("Failed to open 7z: {}", e)))?;
 
-        let file_len = file.metadata()
+        let file_len = file
+            .metadata()
             .map_err(|e| CbxError::Archive(format!("Failed to get file metadata: {}", e)))?
             .len();
 
@@ -83,7 +84,8 @@ impl Archive for SevenZipArchive {
             let file = File::open(&self.path)
                 .map_err(|e| CbxError::Archive(format!("Failed to open 7z: {}", e)))?;
 
-            let file_len = file.metadata()
+            let file_len = file
+                .metadata()
                 .map_err(|e| CbxError::Archive(format!("Failed to get file metadata: {}", e)))?
                 .len();
 
@@ -139,7 +141,11 @@ impl Archive for SevenZipArchive {
 
         // Safety check: prevent memory exhaustion (32MB limit)
         if entry.size > MAX_ENTRY_SIZE {
-            tracing::warn!("Entry too large: {} bytes (max {})", entry.size, MAX_ENTRY_SIZE);
+            tracing::warn!(
+                "Entry too large: {} bytes (max {})",
+                entry.size,
+                MAX_ENTRY_SIZE
+            );
             return Err(CbxError::Archive(format!(
                 "Entry too large: {} bytes (max 32MB)",
                 entry.size
@@ -149,7 +155,8 @@ impl Archive for SevenZipArchive {
         let file = File::open(&self.path)
             .map_err(|e| CbxError::Archive(format!("Failed to open 7z: {}", e)))?;
 
-        let file_len = file.metadata()
+        let file_len = file
+            .metadata()
             .map_err(|e| CbxError::Archive(format!("Failed to get file metadata: {}", e)))?
             .len();
 
@@ -173,9 +180,7 @@ impl Archive for SevenZipArchive {
             })
             .map_err(|e| CbxError::Archive(format!("7z extraction error: {}", e)))?;
 
-        extracted_data.ok_or_else(|| {
-            CbxError::Archive(format!("Entry not found: {}", entry.name))
-        })
+        extracted_data.ok_or_else(|| CbxError::Archive(format!("Entry not found: {}", entry.name)))
     }
 
     fn get_metadata(&self) -> Result<ArchiveMetadata> {
@@ -183,9 +188,7 @@ impl Archive for SevenZipArchive {
         let total_files = entries.len();
         let image_count = entries.iter().filter(|e| is_image_file(&e.name)).count();
 
-        let compressed_size = std::fs::metadata(&self.path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let compressed_size = std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
 
         tracing::debug!(
             "7z metadata: {} files, {} images, {} bytes",
@@ -210,8 +213,8 @@ impl Archive for SevenZipArchive {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::io::Write;
     use sevenz_rust::SevenZWriter;
+    use std::io::Write;
 
     /// Create a test 7z archive on disk
     fn create_test_7z_file(path: &Path, files: &[(&str, &[u8])]) -> Result<()> {
@@ -298,8 +301,11 @@ mod tests {
 
         // Unsorted: first image encountered (order depends on archive library)
         // Could be either page10.jpg or page2.jpg
-        assert!(entry.name == "page10.jpg" || entry.name == "page2.jpg",
-            "Expected an image file, got: {}", entry.name);
+        assert!(
+            entry.name == "page10.jpg" || entry.name == "page2.jpg",
+            "Expected an image file, got: {}",
+            entry.name
+        );
 
         std::fs::remove_file(&temp_path).ok();
     }
@@ -357,179 +363,6 @@ mod tests {
     }
 }
 
-/// 7-Zip archive handler for in-memory data (IStream support)
-pub struct SevenZipArchiveFromMemory {
-    data: Vec<u8>,
-}
-
-impl SevenZipArchiveFromMemory {
-    /// Create a 7z archive from in-memory data
-    pub fn new(cursor: Cursor<Vec<u8>>) -> Result<Self> {
-        let data = cursor.into_inner();
-
-        // Validate by attempting to open
-        let cursor_test = Cursor::new(&data);
-        let data_len = data.len() as u64;
-        let password = Password::empty();
-        let _reader = SevenZReader::new(cursor_test, data_len, password)
-            .map_err(|e| CbxError::Archive(format!("Invalid 7z archive from memory: {}", e)))?;
-
-        Ok(Self { data })
-    }
-
-    /// List all entries in archive
-    fn list_entries(&self) -> Result<Vec<ArchiveEntry>> {
-        let cursor = Cursor::new(&self.data);
-        let data_len = self.data.len() as u64;
-        let password = Password::empty();
-
-        let mut archive = SevenZReader::new(cursor, data_len, password)
-            .map_err(|e| CbxError::Archive(format!("Failed to read 7z from memory: {}", e)))?;
-
-        let mut entries = Vec::new();
-
-        archive
-            .for_each_entries(|entry, _reader| {
-                entries.push(ArchiveEntry {
-                    name: entry.name().to_string(),
-                    size: entry.size(),
-                    is_directory: entry.is_directory(),
-                });
-                Ok(true) // Continue iteration
-            })
-            .map_err(|e| CbxError::Archive(format!("7z iteration error: {}", e)))?;
-
-        Ok(entries)
-    }
-}
-
-impl Archive for SevenZipArchiveFromMemory {
-    fn open(_path: &Path) -> Result<Box<dyn Archive>> {
-        // Not used for in-memory archives
-        Err(CbxError::Archive("Use open_archive_from_memory instead".to_string()))
-    }
-
-    fn find_first_image(&self, sort: bool) -> Result<ArchiveEntry> {
-        tracing::debug!("Finding first image in 7z from memory (sort={})", sort);
-
-        if !sort {
-            // OPTIMIZATION: When not sorting, find first image immediately
-            tracing::debug!("Fast path: finding first image without full listing");
-
-            let cursor = Cursor::new(&self.data);
-            let data_len = self.data.len() as u64;
-            let password = Password::empty();
-
-            let mut archive = SevenZReader::new(cursor, data_len, password)
-                .map_err(|e| CbxError::Archive(format!("Failed to read 7z from memory: {}", e)))?;
-
-            let mut first_image: Option<ArchiveEntry> = None;
-
-            archive
-                .for_each_entries(|entry, _reader| {
-                    let name = entry.name().to_string();
-                    if is_image_file(&name) {
-                        tracing::info!("Found first image (unsorted): {}", name);
-                        first_image = Some(ArchiveEntry {
-                            name,
-                            size: entry.size(),
-                            is_directory: entry.is_directory(),
-                        });
-                        Ok(false) // Stop iteration
-                    } else {
-                        Ok(true) // Continue
-                    }
-                })
-                .map_err(|e| CbxError::Archive(format!("7z iteration error: {}", e)))?;
-
-            return first_image
-                .ok_or_else(|| CbxError::Archive("No images found in archive".to_string()));
-        }
-
-        // STANDARD PATH: List all entries and sort
-        let entries = self.list_entries()?;
-
-        if entries.is_empty() {
-            return Err(CbxError::Archive("Archive is empty".to_string()));
-        }
-
-        let names: Vec<String> = entries.iter().map(|e| e.name.clone()).collect();
-
-        let image_name = find_first_image(names.iter().map(|s| s.as_str()), sort)
-            .ok_or_else(|| CbxError::Archive("No images found in archive".to_string()))?;
-
-        tracing::info!("Found first image (sorted): {}", image_name);
-
-        entries
-            .into_iter()
-            .find(|e| e.name == image_name)
-            .ok_or_else(|| CbxError::Archive("Image entry not found".to_string()))
-    }
-
-    fn extract_entry(&self, entry: &ArchiveEntry) -> Result<Vec<u8>> {
-        tracing::debug!("Extracting entry from memory: {} ({} bytes)", entry.name, entry.size);
-
-        // Safety check: prevent memory exhaustion
-        if entry.size > MAX_ENTRY_SIZE {
-            tracing::warn!("Entry too large: {} bytes (max {})", entry.size, MAX_ENTRY_SIZE);
-            return Err(CbxError::Archive(format!(
-                "Entry too large: {} bytes (max 32MB)",
-                entry.size
-            )));
-        }
-
-        let cursor = Cursor::new(&self.data);
-        let data_len = self.data.len() as u64;
-        let password = Password::empty();
-
-        let mut archive = SevenZReader::new(cursor, data_len, password)
-            .map_err(|e| CbxError::Archive(format!("Failed to read 7z from memory: {}", e)))?;
-
-        let mut extracted_data = None;
-
-        archive
-            .for_each_entries(|sz_entry, reader| {
-                if sz_entry.name() == entry.name {
-                    let mut buffer = Vec::with_capacity(sz_entry.size() as usize);
-                    std::io::copy(reader, &mut buffer)
-                        .map_err(|e| sevenz_rust::Error::Io(e, "Extract failed".into()))?;
-                    extracted_data = Some(buffer);
-                    Ok(false) // Stop iteration
-                } else {
-                    Ok(true) // Continue
-                }
-            })
-            .map_err(|e| CbxError::Archive(format!("7z extraction error: {}", e)))?;
-
-        extracted_data.ok_or_else(|| {
-            CbxError::Archive(format!("Entry not found: {}", entry.name))
-        })
-    }
-
-    fn get_metadata(&self) -> Result<ArchiveMetadata> {
-        let entries = self.list_entries()?;
-        let total_files = entries.len();
-        let image_count = entries.iter().filter(|e| is_image_file(&e.name)).count();
-
-        tracing::debug!(
-            "7z metadata (from memory): {} files, {} images",
-            total_files,
-            image_count
-        );
-
-        Ok(ArchiveMetadata {
-            total_files,
-            image_count,
-            compressed_size: self.data.len() as u64,
-            archive_type: ArchiveType::SevenZip,
-        })
-    }
-
-    fn archive_type(&self) -> ArchiveType {
-        ArchiveType::SevenZip
-    }
-}
-
 /// 7-Zip archive handler for streaming (no memory load!)
 ///
 /// This implementation uses RefCell to work around sevenz-rust's mutable
@@ -567,14 +400,19 @@ impl<R: Read + Seek> SevenZipArchiveFromStream<R> {
         use std::io::SeekFrom;
 
         // Get size
-        let size = reader.seek(SeekFrom::End(0))
+        let size = reader
+            .seek(SeekFrom::End(0))
             .map_err(|e| CbxError::Archive(format!("Failed to get stream size: {}", e)))?;
 
         tracing::debug!("Creating 7z archive from stream ({} bytes)", size);
-        crate::utils::debug_log::debug_log(&format!(">>>>> SevenZipArchiveFromStream::new ({} bytes) <<<<<", size));
+        crate::utils::debug_log::debug_log(&format!(
+            ">>>>> SevenZipArchiveFromStream::new ({} bytes) <<<<<",
+            size
+        ));
 
         // Seek back to start
-        reader.seek(SeekFrom::Start(0))
+        reader
+            .seek(SeekFrom::Start(0))
             .map_err(|e| CbxError::Archive(format!("Failed to seek to start: {}", e)))?;
 
         // Validate by creating a test reader
@@ -583,7 +421,8 @@ impl<R: Read + Seek> SevenZipArchiveFromStream<R> {
             .map_err(|e| CbxError::Archive(format!("Invalid 7z archive from stream: {}", e)))?;
 
         // Seek back to start again
-        reader.seek(SeekFrom::Start(0))
+        reader
+            .seek(SeekFrom::Start(0))
             .map_err(|e| CbxError::Archive(format!("Failed to seek to start: {}", e)))?;
 
         crate::utils::debug_log::debug_log("7z archive validated successfully");
@@ -601,7 +440,8 @@ impl<R: Read + Seek> SevenZipArchiveFromStream<R> {
         let mut reader_ref = self.reader.borrow_mut();
 
         // Seek to start
-        reader_ref.seek(SeekFrom::Start(0))
+        reader_ref
+            .seek(SeekFrom::Start(0))
             .map_err(|e| CbxError::Archive(format!("Failed to seek to start: {}", e)))?;
 
         let password = Password::empty();
@@ -628,7 +468,9 @@ impl<R: Read + Seek> SevenZipArchiveFromStream<R> {
 impl<R: Read + Seek> Archive for SevenZipArchiveFromStream<R> {
     fn open(_path: &Path) -> Result<Box<dyn Archive>> {
         // Not used for stream-based archives
-        Err(CbxError::Archive("Use open_archive_from_stream instead".to_string()))
+        Err(CbxError::Archive(
+            "Use open_archive_from_stream instead".to_string(),
+        ))
     }
 
     fn find_first_image(&self, sort: bool) -> Result<ArchiveEntry> {
@@ -643,7 +485,8 @@ impl<R: Read + Seek> Archive for SevenZipArchiveFromStream<R> {
             let mut reader_ref = self.reader.borrow_mut();
 
             // Seek to start
-            reader_ref.seek(SeekFrom::Start(0))
+            reader_ref
+                .seek(SeekFrom::Start(0))
                 .map_err(|e| CbxError::Archive(format!("Failed to seek to start: {}", e)))?;
 
             let password = Password::empty();
@@ -698,12 +541,23 @@ impl<R: Read + Seek> Archive for SevenZipArchiveFromStream<R> {
     }
 
     fn extract_entry(&self, entry: &ArchiveEntry) -> Result<Vec<u8>> {
-        tracing::debug!("Extracting entry from 7z stream: {} ({} bytes)", entry.name, entry.size);
-        crate::utils::debug_log::debug_log(&format!("7z stream: extract_entry: {} ({} bytes)", entry.name, entry.size));
+        tracing::debug!(
+            "Extracting entry from 7z stream: {} ({} bytes)",
+            entry.name,
+            entry.size
+        );
+        crate::utils::debug_log::debug_log(&format!(
+            "7z stream: extract_entry: {} ({} bytes)",
+            entry.name, entry.size
+        ));
 
         // Safety check: prevent memory exhaustion
         if entry.size > MAX_ENTRY_SIZE {
-            tracing::warn!("Entry too large: {} bytes (max {})", entry.size, MAX_ENTRY_SIZE);
+            tracing::warn!(
+                "Entry too large: {} bytes (max {})",
+                entry.size,
+                MAX_ENTRY_SIZE
+            );
             return Err(CbxError::Archive(format!(
                 "Entry too large: {} bytes (max 32MB)",
                 entry.size
@@ -716,7 +570,8 @@ impl<R: Read + Seek> Archive for SevenZipArchiveFromStream<R> {
         let mut reader_ref = self.reader.borrow_mut();
 
         // Seek to start
-        reader_ref.seek(SeekFrom::Start(0))
+        reader_ref
+            .seek(SeekFrom::Start(0))
             .map_err(|e| CbxError::Archive(format!("Failed to seek to start: {}", e)))?;
 
         let password = Password::empty();
@@ -733,7 +588,10 @@ impl<R: Read + Seek> Archive for SevenZipArchiveFromStream<R> {
                         .map_err(|e| sevenz_rust::Error::Io(e, "Extract failed".into()))?;
 
                     tracing::debug!("Extracted {} bytes from 7z stream", buffer.len());
-                    crate::utils::debug_log::debug_log(&format!("Extracted {} bytes", buffer.len()));
+                    crate::utils::debug_log::debug_log(&format!(
+                        "Extracted {} bytes",
+                        buffer.len()
+                    ));
 
                     extracted_data = Some(buffer);
                     Ok(false) // Stop iteration

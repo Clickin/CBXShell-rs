@@ -79,7 +79,7 @@ Write-Host "  ✓ Manifest and assets copied" -ForegroundColor Green
 
 # Step 5: Create MSIX package
 Write-Host "[5/6] Creating MSIX package..." -ForegroundColor Yellow
-$MsixPath = Join-Path $OutputDir "CBXShell_5.1.0.0_$Platform.msix"
+$MsixPath = Join-Path $OutputDir "CBXShell_5.1.1.0_$Platform.msix"
 $MakeAppxPath = "${env:ProgramFiles(x86)}\Windows Kits\10\bin\10.0.22621.0\x64\makeappx.exe"
 
 if (-not (Test-Path $MakeAppxPath)) {

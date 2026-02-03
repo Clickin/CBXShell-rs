@@ -1,0 +1,38 @@
+---
+title: 패키징
+description: MSIX 및 NSIS 패키징 정보.
+---
+
+## MSIX 패키징 (Microsoft Store)
+
+```powershell
+.\build_msix.ps1 -Configuration Release -Platform x64
+```
+
+출력:
+- `dist\msix\CBXShell_5.0.0.0_x64.msix`
+
+요구 사항:
+- Windows SDK 10.0.22621.0 이상
+- Store 제출용 코드 서명 인증서
+
+## NSIS 설치 프로그램 (GitHub Releases)
+
+```powershell
+.\build_nsis.ps1 -Configuration Release
+```
+
+출력:
+- `dist\CBXShell-Setup-5.0.0.exe`
+
+요구 사항:
+- NSIS 3.x 이상
+
+## 자산 요구 사항
+
+MSIX용으로 다음 이미지를 `Assets/` 아래에 생성하세요:
+- `StoreLogo.png` (50x50)
+- `Square44x44Logo.png` (44x44)
+- `Square150x150Logo.png` (150x150)
+- `Wide310x150Logo.png` (310x150)
+- `SplashScreen.png` (620x300)

@@ -60,12 +60,6 @@ impl ImageFormat {
             Self::Avif => "AVIF",
         }
     }
-
-    /// Check if format is supported by the image decoder
-    pub fn is_supported(&self) -> bool {
-        // All formats are currently supported by the `image` crate
-        true
-    }
 }
 
 /// Detect image format from magic bytes
@@ -123,12 +117,7 @@ pub fn detect_image_format(data: &[u8]) -> Result<ImageFormat> {
     }
 
     // GIF: 47 49 46 38 (GIF8)
-    if data.len() >= 4
-        && data[0] == 0x47
-        && data[1] == 0x49
-        && data[2] == 0x46
-        && data[3] == 0x38
-    {
+    if data.len() >= 4 && data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x38 {
         return Ok(ImageFormat::Gif);
     }
 
@@ -147,12 +136,7 @@ pub fn detect_image_format(data: &[u8]) -> Result<ImageFormat> {
     }
 
     // ICO: 00 00 01 00
-    if data.len() >= 4
-        && data[0] == 0x00
-        && data[1] == 0x00
-        && data[2] == 0x01
-        && data[3] == 0x00
-    {
+    if data.len() >= 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0x01 && data[3] == 0x00 {
         return Ok(ImageFormat::Ico);
     }
 
@@ -229,29 +213,14 @@ pub fn verify_image_format(data: &[u8]) -> Result<ImageFormat> {
     detect_image_format(data)
 }
 
-/// Check if data appears to be an image based on magic bytes
-///
-/// This is a boolean version of `detect_image_format` for cases where
-/// you only need to know if something is an image, not what format.
-///
-/// # Arguments
-/// * `data` - Raw data to check
-///
-/// # Returns
-/// * `true` - Data has valid image magic bytes
-/// * `false` - Data is not a recognized image format
-pub fn is_image_data(data: &[u8]) -> bool {
-    detect_image_format(data).is_ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     /// Minimal valid JPEG (1x1 red pixel)
     const MINIMAL_JPEG: &[u8] = &[
-        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00,
-        0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43, 0x00, 0x03, 0x02, 0x02,
+        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00,
+        0x01, 0x00, 0x01, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43, 0x00, 0x03, 0x02, 0x02,
     ];
 
     /// Minimal valid PNG (1x1 red pixel)
@@ -367,27 +336,6 @@ mod tests {
         assert!(verify_image_format(MINIMAL_JPEG).is_ok());
         assert!(verify_image_format(MINIMAL_PNG).is_ok());
         assert!(verify_image_format(b"not an image").is_err());
-    }
-
-    #[test]
-    fn test_is_image_data() {
-        assert!(is_image_data(MINIMAL_JPEG));
-        assert!(is_image_data(MINIMAL_PNG));
-        assert!(is_image_data(GIF_HEADER));
-        assert!(!is_image_data(b"not an image"));
-        assert!(!is_image_data(&[]));
-    }
-
-    #[test]
-    fn test_all_formats_supported() {
-        assert!(ImageFormat::Jpeg.is_supported());
-        assert!(ImageFormat::Png.is_supported());
-        assert!(ImageFormat::Gif.is_supported());
-        assert!(ImageFormat::Bmp.is_supported());
-        assert!(ImageFormat::Tiff.is_supported());
-        assert!(ImageFormat::Ico.is_supported());
-        assert!(ImageFormat::WebP.is_supported());
-        assert!(ImageFormat::Avif.is_supported());
     }
 
     #[test]

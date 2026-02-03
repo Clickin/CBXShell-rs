@@ -3,119 +3,10 @@
 //! This module provides utilities for reading archives from IStream interfaces
 //! instead of file paths, which is required for IThumbnailProvider.
 
-use windows::Win32::System::Com::*;
-use crate::utils::error::{CbxError, Result};
 use crate::archive::ArchiveType;
+use crate::utils::error::{CbxError, Result};
 use std::io::{self, Read, Seek, SeekFrom};
-
-/// Maximum buffer size for reading from IStream (10GB)
-/// We only extract the first image (max 32MB), so archive size doesn't matter much
-/// Limit set to 10GB to support very large comic archives
-const MAX_STREAM_SIZE: usize = 10 * 1024 * 1024 * 1024;
-
-/// Read entire IStream contents into memory
-///
-/// This function reads all data from an IStream into a Vec<u8>.
-/// It's safe because:
-/// 1. We limit the total size to MAX_STREAM_SIZE (32MB)
-/// 2. We validate the stream pointer
-/// 3. We use proper ULARGE_INTEGER for seeking
-///
-/// # Arguments
-/// * `stream` - The IStream to read from
-///
-/// # Returns
-/// * `Ok(Vec<u8>)` - The complete stream contents
-/// * `Err(CbxError)` - If reading fails or stream is too large
-///
-/// # Safety
-/// This function makes COM calls which are inherently unsafe, but we wrap
-/// them properly with error handling.
-pub fn read_stream_to_memory(stream: &IStream) -> Result<Vec<u8>> {
-    crate::utils::debug_log::debug_log(">>>>> read_stream_to_memory STARTING <<<<<");
-
-    // UNAVOIDABLE UNSAFE: IStream COM interface operations
-    // Why unsafe is required:
-    // 1. COM interface: IStream is a COM interface (C++ vtable calls)
-    // 2. Raw pointer buffer: Read() requires raw pointer to buffer
-    // 3. FFI calls: Seek/Read are C++ methods, not Rust-safe
-    //
-    // Safety guarantees:
-    // - stream is validated (non-null) by type system
-    // - Buffer allocated with correct size
-    // - Read size checked (bytes_read validation)
-    // - Total size limited (MAX_STREAM_SIZE = 10GB)
-    unsafe {
-        // Step 1: Seek to end to get stream size
-        let mut new_position = 0u64;
-        if stream.Seek(
-            0,
-            STREAM_SEEK_END,
-            Some(&mut new_position)
-        ).is_err() {
-            crate::utils::debug_log::debug_log("ERROR: Failed to seek to end");
-            return Err(CbxError::Archive("Failed to seek to end of stream".to_string()));
-        }
-
-        let stream_size = new_position as usize;
-        crate::utils::debug_log::debug_log(&format!("Stream size: {} bytes", stream_size));
-
-        // Step 2: Validate size
-        if stream_size == 0 {
-            crate::utils::debug_log::debug_log("ERROR: Stream is empty");
-            return Err(CbxError::Archive("Empty stream".to_string()));
-        }
-
-        if stream_size > MAX_STREAM_SIZE {
-            crate::utils::debug_log::debug_log(&format!("ERROR: Stream too large: {} bytes (max: {})", stream_size, MAX_STREAM_SIZE));
-            return Err(CbxError::Archive(format!("Stream too large: {} bytes", stream_size)));
-        }
-
-        // Step 3: Seek back to beginning
-        if stream.Seek(
-            0,
-            STREAM_SEEK_SET,
-            None
-        ).is_err() {
-            crate::utils::debug_log::debug_log("ERROR: Failed to seek to beginning");
-            return Err(CbxError::Archive("Failed to seek to beginning of stream".to_string()));
-        }
-
-        crate::utils::debug_log::debug_log("Seek to beginning successful");
-
-        // Step 4: Allocate buffer
-        let mut buffer = vec![0u8; stream_size];
-        crate::utils::debug_log::debug_log(&format!("Allocated buffer: {} bytes", buffer.len()));
-
-        // Step 5: Read all data
-        let mut total_read = 0usize;
-        while total_read < stream_size {
-            let mut bytes_read = 0u32;
-            let remaining = stream_size - total_read;
-            let to_read = remaining.min(1024 * 1024); // Read in 1MB chunks
-
-            if stream.Read(
-                buffer[total_read..].as_mut_ptr() as *mut _,
-                to_read as u32,
-                Some(&mut bytes_read)
-            ).is_err() {
-                crate::utils::debug_log::debug_log("ERROR: Failed to read from stream");
-                return Err(CbxError::Archive("Failed to read from stream".to_string()));
-            }
-
-            if bytes_read == 0 {
-                crate::utils::debug_log::debug_log(&format!("ERROR: Unexpected EOF at {} bytes (expected {})", total_read, stream_size));
-                return Err(CbxError::Archive("Unexpected end of stream".to_string()));
-            }
-
-            total_read += bytes_read as usize;
-            crate::utils::debug_log::debug_log(&format!("Read progress: {}/{} bytes", total_read, stream_size));
-        }
-
-        crate::utils::debug_log::debug_log(&format!("SUCCESS: Read {} bytes from stream", total_read));
-        Ok(buffer)
-    }
-}
+use windows::Win32::System::Com::*;
 
 /// IStream adapter that implements Read and Seek traits
 ///
@@ -146,28 +37,6 @@ impl IStreamReader {
             position: 0,
         }
     }
-
-    /// Get the current position in the stream
-    pub fn position(&self) -> u64 {
-        self.position
-    }
-
-    /// Get the total size of the stream
-    pub fn size(&self) -> io::Result<u64> {
-        unsafe {
-            let mut end_position = 0u64;
-            self.stream
-                .Seek(0, STREAM_SEEK_END, Some(&mut end_position))
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Seek failed: {}", e)))?;
-
-            // Seek back to current position
-            self.stream
-                .Seek(self.position as i64, STREAM_SEEK_SET, None)
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("Seek back failed: {}", e)))?;
-
-            Ok(end_position)
-        }
-    }
 }
 
 impl Read for IStreamReader {
@@ -188,12 +57,11 @@ impl Read for IStreamReader {
         // - bytes_read validated before use
         unsafe {
             let mut bytes_read = 0u32;
-            let hr = self.stream
-                .Read(
-                    buf.as_mut_ptr() as *mut _,
-                    buf.len() as u32,
-                    Some(&mut bytes_read),
-                );
+            let hr = self.stream.Read(
+                buf.as_mut_ptr() as *mut _,
+                buf.len() as u32,
+                Some(&mut bytes_read),
+            );
 
             if hr.is_err() {
                 return Err(io::Error::new(
@@ -228,7 +96,9 @@ impl Seek for IStreamReader {
             let mut new_position = 0u64;
             self.stream
                 .Seek(offset, origin, Some(&mut new_position))
-                .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("IStream::Seek failed: {}", e)))?;
+                .map_err(|e| {
+                    io::Error::new(io::ErrorKind::Other, format!("IStream::Seek failed: {}", e))
+                })?;
 
             self.position = new_position;
             Ok(new_position)
@@ -267,7 +137,11 @@ pub fn detect_archive_type_from_bytes(data: &[u8]) -> Result<ArchiveType> {
         .iter()
         .map(|b| format!("{:02X}", b))
         .collect();
-    crate::utils::debug_log::debug_log(&format!("First {} bytes: {}", preview_len, hex_preview.join(" ")));
+    crate::utils::debug_log::debug_log(&format!(
+        "First {} bytes: {}",
+        preview_len,
+        hex_preview.join(" ")
+    ));
 
     // Check ZIP magic bytes
     if data.len() >= 4 {
@@ -305,7 +179,9 @@ pub fn detect_archive_type_from_bytes(data: &[u8]) -> Result<ArchiveType> {
     }
 
     crate::utils::debug_log::debug_log("ERROR: Unrecognized archive format");
-    Err(CbxError::UnsupportedFormat("Unrecognized archive format".to_string()))
+    Err(CbxError::UnsupportedFormat(
+        "Unrecognized archive format".to_string(),
+    ))
 }
 
 #[cfg(test)]

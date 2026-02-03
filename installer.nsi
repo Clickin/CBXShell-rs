@@ -199,7 +199,7 @@ Section "CBXManager (Configuration Tool)" SecManager
   SetOutPath "$INSTDIR"
 
   ; Install manager executable
-  File "target\release\CBXManager.exe"
+  File "${BUILD_DIR}\CBXManager.exe"
 
   ; Create Start Menu shortcuts
   CreateDirectory "$SMPROGRAMS\${PRODUCT_NAME}"

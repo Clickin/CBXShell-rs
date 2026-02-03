@@ -66,6 +66,7 @@ $DistDir = ".\dist"
 if (-not (Test-Path $DistDir)) {
     New-Item -ItemType Directory -Force -Path $DistDir | Out-Null
 }
+Get-ChildItem "$DistDir\CBXShell-rs-Setup-*-*.exe" -ErrorAction SilentlyContinue | Remove-Item -Force
 Write-Host "  ✓ Distribution directory ready" -ForegroundColor Green
 
 # Step 3: Build NSIS installers

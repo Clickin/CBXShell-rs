@@ -1,0 +1,40 @@
+---
+title: 아키텍처
+description: 핵심 COM 및 아카이브 처리 설계.
+---
+
+CBXShell은 최신 Windows 셸 확장 인터페이스와 ZIP/RAR/7z를 위한
+트레이트 기반 아카이브 계층을 구현합니다.
+
+## COM 구현
+
+- `IThumbnailProvider`: 썸네일 추출
+- `IInitializeWithStream`: 스트림 기반 아카이브 접근
+- `IQueryInfo`: 툴팁 메타데이터 제공
+
+호환성을 위해 기존 인터페이스도 유지됩니다:
+- `IPersistFile`
+- `IExtractImage2`
+
+## 아카이브 지원
+
+아카이브 계층은 다음과 같은 통합 트레이트 API를 제공합니다:
+
+```rust
+pub trait Archive: Send {
+    fn find_first_image(&mut self, sort: bool) -> Result<ArchiveEntry>;
+    fn extract_to_memory(&mut self, entry: &ArchiveEntry) -> Result<Vec<u8>>;
+    fn get_info(&self) -> Result<ArchiveInfo>;
+}
+```
+
+구현체:
+- Zip: `zip` crate
+- Rar: `unrar` crate
+- 7z: `sevenz-rust` crate
+
+## 이미지 처리
+
+- `image` crate 기반 WebP, AVIF, JPEG, PNG, GIF, BMP, TIFF, ICO 지원
+- `fast_image_resize` 기반 고품질 리사이즈 (Lanczos3)
+- Explorer 통합을 위한 HBITMAP 생성

@@ -1,0 +1,31 @@
+---
+title: 빌드 및 실행
+description: CBXShell 빌드 요구 사항과 명령.
+---
+
+## 요구 사항
+
+- Rust 1.70+ (stable)
+- Windows 10 SDK 이상
+- Visual Studio Build Tools (MSVC toolchain)
+
+## 빌드 명령
+
+```bash
+git clone https://github.com/Clickin/CBXShell-rs.git
+cd CBXShell-rs
+cargo build --release
+```
+
+아키텍처별 빌드:
+
+```bash
+cargo build --release --target x86_64-pc-windows-msvc
+cargo build --release --target aarch64-pc-windows-msvc
+```
+
+테스트 실행:
+
+```bash
+cargo test
+```

@@ -1,0 +1,40 @@
+---
+title: Architecture
+description: Core COM and archive processing design.
+---
+
+CBXShell implements modern Windows shell extension interfaces and a trait-based
+archive layer for ZIP, RAR, and 7z formats.
+
+## COM implementation
+
+- `IThumbnailProvider` for thumbnail extraction
+- `IInitializeWithStream` for stream-based archive access
+- `IQueryInfo` for tooltip metadata
+
+Legacy interfaces are retained for compatibility:
+- `IPersistFile`
+- `IExtractImage2`
+
+## Archive support
+
+The archive layer exposes a unified trait API:
+
+```rust
+pub trait Archive: Send {
+    fn find_first_image(&mut self, sort: bool) -> Result<ArchiveEntry>;
+    fn extract_to_memory(&mut self, entry: &ArchiveEntry) -> Result<Vec<u8>>;
+    fn get_info(&self) -> Result<ArchiveInfo>;
+}
+```
+
+Implementations:
+- Zip: `zip` crate
+- Rar: `unrar` crate
+- 7z: `sevenz-rust` crate
+
+## Image processing
+
+- WebP, AVIF, JPEG, PNG, GIF, BMP, TIFF, ICO via `image` crate
+- High-quality resize via `fast_image_resize` (Lanczos3)
+- HBITMAP generation for Explorer integration

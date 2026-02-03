@@ -1,0 +1,30 @@
+---
+title: Project Structure
+description: Key directories and responsibilities.
+---
+
+```
+CBXShell/
+├── Cargo.toml
+├── CBXShell/
+│   ├── Cargo.toml
+│   ├── build.rs
+│   ├── src/
+│   │   ├── lib.rs
+│   │   ├── com/
+│   │   ├── archive/
+│   │   ├── image_processor/
+│   │   ├── registry.rs
+│   │   ├── utils/
+│   │   └── manager/
+│   └── tests/
+├── build_msix.ps1
+├── build_nsis.ps1
+└── README.md
+```
+
+Key areas:
+- `CBXShell/src/com`: COM interfaces and class factory
+- `CBXShell/src/archive`: Archive readers and image discovery
+- `CBXShell/src/image_processor`: Decode, resize, HBITMAP conversion
+- `CBXShell/src/manager`: Configuration GUI

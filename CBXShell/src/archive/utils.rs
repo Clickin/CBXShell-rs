@@ -1,9 +1,8 @@
+use crate::utils::error::{CbxError, Result};
 ///! Shared utilities for archive processing
 ///!
 ///! Provides image detection, natural sorting, and common helpers
-
 use std::path::Path;
-use crate::utils::error::{CbxError, Result};
 
 /// Maximum uncompressed size for a single entry (32MB)
 /// This matches the C++ implementation's CBXMEM_MAXBUFFER_SIZE
@@ -12,20 +11,14 @@ pub const MAX_ENTRY_SIZE: u64 = 32 * 1024 * 1024;
 /// Supported image extensions
 /// Includes modern formats (WebP, AVIF) for Phase 3
 const IMAGE_EXTENSIONS: &[&str] = &[
-    "bmp", "ico", "gif",
-    "jpg", "jpe", "jfif", "jpeg",
-    "png",
-    "tif", "tiff",
-    "webp",  // Phase 3
-    "avif",  // Phase 3
+    "bmp", "ico", "gif", "jpg", "jpe", "jfif", "jpeg", "png", "tif", "tiff",
+    "webp", // Phase 3
+    "avif", // Phase 3
 ];
 
 /// Check if filename is an image based on extension
 pub fn is_image_file(name: &str) -> bool {
-    if let Some(ext) = Path::new(name)
-        .extension()
-        .and_then(|s| s.to_str())
-    {
+    if let Some(ext) = Path::new(name).extension().and_then(|s| s.to_str()) {
         IMAGE_EXTENSIONS.contains(&ext.to_ascii_lowercase().as_str())
     } else {
         false
@@ -41,13 +34,8 @@ pub fn natural_sort_cmp(a: &str, b: &str) -> std::cmp::Ordering {
 ///
 /// If `sort` is true, returns alphabetically first image (natural order).
 /// If `sort` is false, returns first image encountered (early exit optimization).
-pub fn find_first_image<'a>(
-    names: impl Iterator<Item = &'a str>,
-    sort: bool
-) -> Option<String> {
-    let mut images: Vec<&str> = names
-        .filter(|name| is_image_file(name))
-        .collect();
+pub fn find_first_image<'a>(names: impl Iterator<Item = &'a str>, sort: bool) -> Option<String> {
+    let mut images: Vec<&str> = names.filter(|name| is_image_file(name)).collect();
 
     if images.is_empty() {
         return None;
@@ -138,7 +126,10 @@ mod tests {
         // Natural ordering: 1 < 2 < 10
         assert_eq!(natural_sort_cmp("page1.jpg", "page2.jpg"), Ordering::Less);
         assert_eq!(natural_sort_cmp("page2.jpg", "page10.jpg"), Ordering::Less);
-        assert_eq!(natural_sort_cmp("page10.jpg", "page2.jpg"), Ordering::Greater);
+        assert_eq!(
+            natural_sort_cmp("page10.jpg", "page2.jpg"),
+            Ordering::Greater
+        );
         assert_eq!(natural_sort_cmp("page1.jpg", "page1.jpg"), Ordering::Equal);
 
         // Alphabetic fallback
@@ -183,9 +174,7 @@ mod tests {
     #[test]
     fn test_verify_image_data_valid_jpeg() {
         // Minimal valid JPEG
-        let jpeg_data = &[
-            0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46,
-        ];
+        let jpeg_data = &[0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46];
         let result = verify_image_data(jpeg_data, "test.jpg");
         assert!(result.is_ok());
     }
@@ -193,9 +182,7 @@ mod tests {
     #[test]
     fn test_verify_image_data_valid_png() {
         // PNG signature
-        let png_data = &[
-            0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
-        ];
+        let png_data = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
         let result = verify_image_data(png_data, "test.png");
         assert!(result.is_ok());
     }

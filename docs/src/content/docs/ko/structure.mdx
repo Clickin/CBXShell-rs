@@ -1,0 +1,30 @@
+---
+title: 프로젝트 구조
+description: 주요 디렉터리와 역할.
+---
+
+```
+CBXShell/
+├── Cargo.toml
+├── CBXShell/
+│   ├── Cargo.toml
+│   ├── build.rs
+│   ├── src/
+│   │   ├── lib.rs
+│   │   ├── com/
+│   │   ├── archive/
+│   │   ├── image_processor/
+│   │   ├── registry.rs
+│   │   ├── utils/
+│   │   └── manager/
+│   └── tests/
+├── build_msix.ps1
+├── build_nsis.ps1
+└── README.md
+```
+
+주요 영역:
+- `CBXShell/src/com`: COM 인터페이스와 클래스 팩토리
+- `CBXShell/src/archive`: 아카이브 리더와 이미지 탐색
+- `CBXShell/src/image_processor`: 디코딩, 리사이즈, HBITMAP 변환
+- `CBXShell/src/manager`: 구성 GUI

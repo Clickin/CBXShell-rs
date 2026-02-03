@@ -1,16 +1,15 @@
+use crate::utils::error::{CbxError, Result};
 ///! Archive format handling
 ///!
 ///! Supports ZIP, RAR, and 7z formats for comic book archives
-
 use std::path::Path;
-use crate::utils::error::{CbxError, Result};
 
-mod utils;
 mod config;
-mod zip;
-mod sevenz;
 mod rar;
+mod sevenz;
 pub mod stream_reader;
+mod utils;
+mod zip;
 
 // Re-export utilities for internal use only (not used in public API)
 pub use config::should_sort_images;
@@ -19,11 +18,11 @@ pub use config::should_sort_images;
 pub use utils::verify_image_data;
 
 #[allow(dead_code)] // Used by open_archive function and part of public API
-pub use zip::ZipArchive;
+pub use rar::RarArchive;
 #[allow(dead_code)] // Used by open_archive function and part of public API
 pub use sevenz::SevenZipArchive;
 #[allow(dead_code)] // Used by open_archive function and part of public API
-pub use rar::RarArchive;
+pub use zip::ZipArchive;
 
 // Re-export stream reader utilities (detect_archive_type_from_bytes is used publicly)
 pub use stream_reader::{detect_archive_type_from_bytes, IStreamReader};
@@ -116,56 +115,14 @@ pub fn open_archive(path: &Path) -> Result<Box<dyn Archive>> {
     }
 }
 
-/// Open an archive from in-memory data (for IStream support)
-///
-/// This function detects the archive type from magic bytes and opens
-/// the appropriate archive handler from memory.
-///
-/// # Arguments
-/// * `data` - The complete archive data in memory
-///
-/// # Returns
-/// * `Ok(Box<dyn Archive>)` - Opened archive handler
-/// * `Err(CbxError)` - If the format is unsupported or opening fails
-pub fn open_archive_from_memory(data: Vec<u8>) -> Result<Box<dyn Archive>> {
-    use std::io::Cursor;
-
-    crate::utils::debug_log::debug_log(">>>>> open_archive_from_memory STARTING <<<<<");
-    crate::utils::debug_log::debug_log(&format!("Archive data size: {} bytes", data.len()));
-
-    // Detect archive type from magic bytes
-    let archive_type = detect_archive_type_from_bytes(&data)?;
-    crate::utils::debug_log::debug_log(&format!("Detected archive type: {:?}", archive_type));
-
-    match archive_type {
-        ArchiveType::Zip => {
-            // Create ZIP archive from memory
-            let cursor = Cursor::new(data);
-            let zip_reader = ::zip::ZipArchive::new(cursor)
-                .map_err(|e| CbxError::Archive(format!("Failed to open ZIP from memory: {}", e)))?;
-
-            Ok(Box::new(zip::ZipArchiveFromMemory::new(zip_reader)))
-        }
-        ArchiveType::SevenZip => {
-            // Create 7z archive from memory
-            let cursor = Cursor::new(data);
-            Ok(Box::new(sevenz::SevenZipArchiveFromMemory::new(cursor)?))
-        }
-        ArchiveType::Rar => {
-            // Create RAR archive from memory (uses temp file)
-            Ok(Box::new(rar::RarArchiveFromMemory::new(data)?))
-        }
-    }
-}
-
 /// Open an archive from a stream (OPTIMIZED for IStream)
 ///
-/// This function provides significant performance improvements over `open_archive_from_memory`
-/// by streaming data directly instead of loading the entire archive into memory first.
+/// This function provides significant performance improvements by streaming data directly
+/// instead of loading the entire archive into memory first.
 ///
 /// # Performance Comparison (1GB archive)
-/// - **open_archive_from_memory**: Load 1GB to memory (~3s) + process
-/// - **open_archive_from_stream**: Stream directly (~50-100ms for metadata + image)
+/// - **Memory-based**: Load 1GB to memory (~3s) + process
+/// - **Stream-based**: Stream directly (~50-100ms for metadata + image)
 ///
 /// # Supported Formats
 /// - **ZIP**: Direct streaming (20-50x faster for large archives)
@@ -191,7 +148,7 @@ pub fn open_archive_from_memory(data: Vec<u8>) -> Result<Box<dyn Archive>> {
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 pub fn open_archive_from_stream<R: std::io::Read + std::io::Seek + 'static>(
-    mut reader: R
+    mut reader: R,
 ) -> Result<Box<dyn Archive>> {
     use std::io::SeekFrom;
 
@@ -199,7 +156,8 @@ pub fn open_archive_from_stream<R: std::io::Read + std::io::Seek + 'static>(
 
     // Read first 16 bytes for magic byte detection
     let mut magic_bytes = [0u8; 16];
-    reader.read_exact(&mut magic_bytes)
+    reader
+        .read_exact(&mut magic_bytes)
         .map_err(|e| CbxError::Archive(format!("Failed to read magic bytes: {}", e)))?;
 
     // Detect archive type
@@ -207,7 +165,8 @@ pub fn open_archive_from_stream<R: std::io::Read + std::io::Seek + 'static>(
     crate::utils::debug_log::debug_log(&format!("Detected archive type: {:?}", archive_type));
 
     // Seek back to beginning
-    reader.seek(SeekFrom::Start(0))
+    reader
+        .seek(SeekFrom::Start(0))
         .map_err(|e| CbxError::Archive(format!("Failed to seek to start: {}", e)))?;
 
     match archive_type {
@@ -219,7 +178,9 @@ pub fn open_archive_from_stream<R: std::io::Read + std::io::Seek + 'static>(
         ArchiveType::Rar => {
             // RAR: Stream to temp file (OPTIMIZED)
             crate::utils::debug_log::debug_log("Using optimized RAR streaming to temp file");
-            Ok(Box::new(rar::RarArchiveFromMemory::new_from_stream(reader)?))
+            Ok(Box::new(rar::RarArchiveFromMemory::new_from_stream(
+                reader,
+            )?))
         }
         ArchiveType::SevenZip => {
             // 7z: Streaming with RefCell (OPTIMIZED!)

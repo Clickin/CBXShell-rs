@@ -1,16 +1,15 @@
 ///! ZIP/CBZ archive implementation
 ///!
 ///! Supports ZIP, CBZ, EPUB, and PHZ formats using the `zip` crate
-
 use std::cell::RefCell;
 use std::fs::File;
-use std::io::{BufReader, Cursor, Read, Seek};
+use std::io::{BufReader, Read, Seek};
 use std::path::{Path, PathBuf};
 use zip::ZipArchive as ZipReader;
 
+use super::utils::{find_first_image, is_image_file, MAX_ENTRY_SIZE};
 use crate::archive::{Archive, ArchiveEntry, ArchiveMetadata, ArchiveType};
 use crate::utils::error::{CbxError, Result};
-use super::utils::{is_image_file, find_first_image, MAX_ENTRY_SIZE};
 
 /// ZIP archive handler
 pub struct ZipArchive {
@@ -41,11 +40,7 @@ impl ZipArchive {
     fn get_entry_names(&self) -> Vec<String> {
         let mut archive = self.archive.borrow_mut();
         (0..archive.len())
-            .filter_map(|i| {
-                archive.by_index(i)
-                    .ok()
-                    .map(|f| f.name().to_string())
-            })
+            .filter_map(|i| archive.by_index(i).ok().map(|f| f.name().to_string()))
             .collect()
     }
 
@@ -54,7 +49,8 @@ impl ZipArchive {
         let mut archive = self.archive.borrow_mut();
 
         for i in 0..archive.len() {
-            let zip_entry = archive.by_index(i)
+            let zip_entry = archive
+                .by_index(i)
                 .map_err(|e| CbxError::Archive(format!("Failed to get entry {}: {}", i, e)))?;
 
             if zip_entry.name() == name {
@@ -123,7 +119,11 @@ impl Archive for ZipArchive {
 
         // Safety check: prevent memory exhaustion (32MB limit from C++ implementation)
         if entry.size > MAX_ENTRY_SIZE {
-            tracing::warn!("Entry too large: {} bytes (max {})", entry.size, MAX_ENTRY_SIZE);
+            tracing::warn!(
+                "Entry too large: {} bytes (max {})",
+                entry.size,
+                MAX_ENTRY_SIZE
+            );
             return Err(CbxError::Archive(format!(
                 "Entry too large: {} bytes (max 32MB)",
                 entry.size
@@ -156,9 +156,7 @@ impl Archive for ZipArchive {
             .count();
 
         // Calculate compressed size from file
-        let compressed_size = std::fs::metadata(&self.path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+        let compressed_size = std::fs::metadata(&self.path).map(|m| m.len()).unwrap_or(0);
 
         tracing::debug!(
             "ZIP metadata: {} files, {} images, {} bytes",
@@ -281,11 +279,7 @@ mod tests {
     #[test]
     fn test_no_images_found() {
         let temp_path = std::env::temp_dir().join("test_no_images.zip");
-        create_test_zip_file(
-            &temp_path,
-            &[("readme.txt", b"text"), ("data.json", b"{}")],
-        )
-        .unwrap();
+        create_test_zip_file(&temp_path, &[("readme.txt", b"text"), ("data.json", b"{}")]).unwrap();
 
         let archive = ZipArchive::open(&temp_path).unwrap();
         let result = archive.find_first_image(true);
@@ -335,160 +329,6 @@ mod tests {
     }
 }
 
-/// ZIP archive handler for in-memory data (IStream support)
-pub struct ZipArchiveFromMemory {
-    archive: RefCell<ZipReader<Cursor<Vec<u8>>>>,
-    #[allow(dead_code)] // Used in get_metadata() method for compressed_size
-    data_size: usize,
-}
-
-impl ZipArchiveFromMemory {
-    /// Create a ZIP archive from in-memory data
-    pub fn new(archive: ZipReader<Cursor<Vec<u8>>>) -> Self {
-        let data_size = archive.len();
-        Self {
-            archive: RefCell::new(archive),
-            data_size,
-        }
-    }
-
-    /// Get all entry names (for internal use)
-    fn get_entry_names(&self) -> Vec<String> {
-        let mut archive = self.archive.borrow_mut();
-        (0..archive.len())
-            .filter_map(|i| {
-                archive.by_index(i)
-                    .ok()
-                    .map(|f| f.name().to_string())
-            })
-            .collect()
-    }
-
-    /// Get entry details by name
-    fn get_entry_by_name(&self, name: &str) -> Result<ArchiveEntry> {
-        let mut archive = self.archive.borrow_mut();
-
-        for i in 0..archive.len() {
-            let zip_entry = archive.by_index(i)
-                .map_err(|e| CbxError::Archive(format!("Failed to get entry {}: {}", i, e)))?;
-
-            if zip_entry.name() == name {
-                return Ok(ArchiveEntry {
-                    name: name.to_string(),
-                    size: zip_entry.size(),
-                    is_directory: zip_entry.is_dir(),
-                });
-            }
-        }
-
-        Err(CbxError::Archive(format!("Entry not found: {}", name)))
-    }
-}
-
-impl Archive for ZipArchiveFromMemory {
-    fn open(_path: &Path) -> Result<Box<dyn Archive>> {
-        // Not used for in-memory archives
-        Err(CbxError::Archive("Use open_archive_from_memory instead".to_string()))
-    }
-
-    fn find_first_image(&self, sort: bool) -> Result<ArchiveEntry> {
-        tracing::debug!("Finding first image in ZIP from memory (sort={})", sort);
-
-        if !sort {
-            // OPTIMIZATION: When not sorting, find first image immediately
-            tracing::debug!("Fast path: finding first image without full listing");
-
-            let mut archive = self.archive.borrow_mut();
-            for i in 0..archive.len() {
-                if let Ok(entry) = archive.by_index(i) {
-                    let name = entry.name().to_string();
-                    if is_image_file(&name) {
-                        tracing::info!("Found first image (unsorted): {}", name);
-                        return Ok(ArchiveEntry {
-                            name,
-                            size: entry.size(),
-                            is_directory: entry.is_dir(),
-                        });
-                    }
-                }
-            }
-
-            return Err(CbxError::Archive("No images found in archive".to_string()));
-        }
-
-        // STANDARD PATH: List all entries and sort
-        let entry_names = self.get_entry_names();
-
-        if entry_names.is_empty() {
-            return Err(CbxError::Archive("Archive is empty".to_string()));
-        }
-
-        // Find first image using shared utility
-        let image_name = find_first_image(entry_names.iter().map(|s| s.as_str()), sort)
-            .ok_or_else(|| CbxError::Archive("No images found in archive".to_string()))?;
-
-        tracing::info!("Found first image (sorted): {}", image_name);
-
-        // Get entry details
-        self.get_entry_by_name(&image_name)
-    }
-
-    fn extract_entry(&self, entry: &ArchiveEntry) -> Result<Vec<u8>> {
-        tracing::debug!("Extracting entry from memory: {} ({} bytes)", entry.name, entry.size);
-
-        // Safety check: prevent memory exhaustion
-        if entry.size > MAX_ENTRY_SIZE {
-            tracing::warn!("Entry too large: {} bytes (max {})", entry.size, MAX_ENTRY_SIZE);
-            return Err(CbxError::Archive(format!(
-                "Entry too large: {} bytes (max 32MB)",
-                entry.size
-            )));
-        }
-
-        let mut archive = self.archive.borrow_mut();
-
-        // Find and extract entry by name
-        let mut zip_entry = archive
-            .by_name(&entry.name)
-            .map_err(|e| CbxError::Archive(format!("Entry not found: {}", e)))?;
-
-        // Read to buffer
-        let mut buffer = Vec::with_capacity(entry.size as usize);
-        zip_entry
-            .read_to_end(&mut buffer)
-            .map_err(|e| CbxError::Archive(format!("Failed to extract entry: {}", e)))?;
-
-        tracing::debug!("Extracted {} bytes", buffer.len());
-        Ok(buffer)
-    }
-
-    fn get_metadata(&self) -> Result<ArchiveMetadata> {
-        let entry_names = self.get_entry_names();
-        let total_files = entry_names.len();
-        let image_count = entry_names
-            .iter()
-            .filter(|name| is_image_file(name))
-            .count();
-
-        tracing::debug!(
-            "ZIP metadata (from memory): {} files, {} images",
-            total_files,
-            image_count
-        );
-
-        Ok(ArchiveMetadata {
-            total_files,
-            image_count,
-            compressed_size: self.data_size as u64,
-            archive_type: ArchiveType::Zip,
-        })
-    }
-
-    fn archive_type(&self) -> ArchiveType {
-        ArchiveType::Zip
-    }
-}
-
 /// ZIP archive handler for IStream (direct streaming, no memory copy)
 ///
 /// This is a performance-optimized version that streams directly from IStream
@@ -521,11 +361,7 @@ impl<R: Read + Seek> ZipArchiveFromStream<R> {
     fn get_entry_names(&self) -> Vec<String> {
         let mut archive = self.archive.borrow_mut();
         (0..archive.len())
-            .filter_map(|i| {
-                archive.by_index(i)
-                    .ok()
-                    .map(|f| f.name().to_string())
-            })
+            .filter_map(|i| archive.by_index(i).ok().map(|f| f.name().to_string()))
             .collect()
     }
 
@@ -534,7 +370,8 @@ impl<R: Read + Seek> ZipArchiveFromStream<R> {
         let mut archive = self.archive.borrow_mut();
 
         for i in 0..archive.len() {
-            let zip_entry = archive.by_index(i)
+            let zip_entry = archive
+                .by_index(i)
                 .map_err(|e| CbxError::Archive(format!("Failed to get entry {}: {}", i, e)))?;
 
             if zip_entry.name() == name {
@@ -553,7 +390,9 @@ impl<R: Read + Seek> ZipArchiveFromStream<R> {
 impl<R: Read + Seek> Archive for ZipArchiveFromStream<R> {
     fn open(_path: &Path) -> Result<Box<dyn Archive>> {
         // Not used for stream-based archives
-        Err(CbxError::Archive("Use open_archive_from_stream instead".to_string()))
+        Err(CbxError::Archive(
+            "Use open_archive_from_stream instead".to_string(),
+        ))
     }
 
     fn find_first_image(&self, sort: bool) -> Result<ArchiveEntry> {
@@ -599,11 +438,19 @@ impl<R: Read + Seek> Archive for ZipArchiveFromStream<R> {
     }
 
     fn extract_entry(&self, entry: &ArchiveEntry) -> Result<Vec<u8>> {
-        tracing::debug!("Extracting entry from stream: {} ({} bytes)", entry.name, entry.size);
+        tracing::debug!(
+            "Extracting entry from stream: {} ({} bytes)",
+            entry.name,
+            entry.size
+        );
 
         // Safety check: prevent memory exhaustion
         if entry.size > MAX_ENTRY_SIZE {
-            tracing::warn!("Entry too large: {} bytes (max {})", entry.size, MAX_ENTRY_SIZE);
+            tracing::warn!(
+                "Entry too large: {} bytes (max {})",
+                entry.size,
+                MAX_ENTRY_SIZE
+            );
             return Err(CbxError::Archive(format!(
                 "Entry too large: {} bytes (max 32MB)",
                 entry.size

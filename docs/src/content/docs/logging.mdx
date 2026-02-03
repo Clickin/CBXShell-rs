@@ -1,0 +1,16 @@
+---
+title: Logging
+description: Where to find debug logs.
+---
+
+CBXShell writes debug logs to a temp file for troubleshooting:
+
+```cmd
+C:\Users\<username>\AppData\Local\Temp\cbxshell_debug.log
+```
+
+Tail logs in PowerShell:
+
+```powershell
+Get-Content "$env:TEMP\cbxshell_debug.log" -Wait
+```

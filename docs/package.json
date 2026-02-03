@@ -1,0 +1,16 @@
+{
+  "name": "cbxshell-docs",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@10.26.2",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^4.3.1",
+    "@astrojs/starlight": "^0.33.2",
+    "astro": "^5.12.5"
+  }
+}
