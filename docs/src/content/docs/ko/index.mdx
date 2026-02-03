@@ -1,9 +1,41 @@
 ---
-title: CBXShell 문서
+title: CBXShell
 description: 최신 Windows 아카이브 썸네일 핸들러.
+template: splash
+hero:
+  tagline: ZIP, RAR, 7z 아카이브 썸네일을 위한 고성능 Rust 쉘 확장 프로그램.
+  actions:
+    - text: 시작하기
+      link: /ko/overview/
+      icon: right-arrow
+      variant: primary
+    - text: GitHub에서 보기
+      link: https://github.com/Clickin/CBXShell-rs
+      icon: external
+      variant: secondary
 ---
 
-CBXShell 문서에 오신 것을 환영합니다.
+import { Card, CardGrid } from '@astrojs/starlight/components';
 
-[개요](/ko/overview/)에서 전체 흐름을 확인한 뒤,
-[설치](/ko/installation/)와 [빌드 및 실행](/ko/build/)을 따라 설정하세요.
+const baseUrl = import.meta.env.BASE_URL;
+
+<div class="hero-bg"></div>
+
+<div class="hero-media">
+	<img src={`${baseUrl}images/cbxshell-manager.webp`} alt="CBXShell Manager" />
+</div>
+
+<CardGrid stagger>
+	<Card title="현대적 아키텍처" icon="rocket">
+		**Rust**와 **IThumbnailProvider**로 구축되어 Windows 11/10과 완벽하게 통합됩니다. 메모리 안전성과 빠른 속도를 보장합니다.
+	</Card>
+	<Card title="광범위한 포맷 지원" icon="document">
+		**ZIP, RAR, 7z** 아카이브(.cbz, .cbr, .cb7)와 **WebP**, **AVIF** 같은 최신 이미지 포맷을 지원합니다.
+	</Card>
+	<Card title="스마트 정렬" icon="setting">
+		단순 파일 날짜가 아닌, 지능적인 자연어 정렬로 만화 표지를 정확하게 선택합니다.
+	</Card>
+	<Card title="설정 관리자" icon="puzzle">
+		레지스트리 수정 없이 핸들러를 켜고 끄거나 설정을 관리할 수 있는 현대적인 GUI를 제공합니다.
+	</Card>
+</CardGrid>

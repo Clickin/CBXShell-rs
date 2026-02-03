@@ -1,9 +1,41 @@
 ---
-title: CBXShell Docs
-description: Modern Windows archive thumbnail handler.
+title: CBXShell
+description: Modern Windows Shell Extension for comic book archive thumbnails.
+template: splash
+hero:
+  tagline: High-performance Rust shell extension for ZIP, RAR, and 7z archive thumbnails.
+  actions:
+    - text: Get Started
+      link: /overview/
+      icon: right-arrow
+      variant: primary
+    - text: View on GitHub
+      link: https://github.com/Clickin/CBXShell-rs
+      icon: external
+      variant: secondary
 ---
 
-Welcome to the CBXShell documentation.
+import { Card, CardGrid } from '@astrojs/starlight/components';
 
-Start with [Overview](/overview/) for a high-level summary, then follow
-[Installation](/installation/) and [Build & Run](/build/) to get set up.
+const baseUrl = import.meta.env.BASE_URL;
+
+<div class="hero-bg"></div>
+
+<div class="hero-media">
+	<img src={`${baseUrl}images/cbxshell-manager.webp`} alt="CBXShell Manager" />
+</div>
+
+<CardGrid stagger>
+	<Card title="Modern Architecture" icon="rocket">
+		Built with **Rust** and **IThumbnailProvider** for native Windows 11/10 integration. Memory-safe and blazing fast.
+	</Card>
+	<Card title="Universal Support" icon="document">
+		Handles **ZIP, RAR, 7z** archives (.cbz, .cbr, .cb7) and modern image formats like **WebP** and **AVIF**.
+	</Card>
+	<Card title="Smart Sorting" icon="setting">
+		Intelligent natural sorting ensures your comic covers are selected correctly, not just by file date.
+	</Card>
+	<Card title="Configuration Manager" icon="puzzle">
+		Includes a modern GUI to easily toggle handlers, configure formats, and manage settings without registry hacks.
+	</Card>
+</CardGrid>

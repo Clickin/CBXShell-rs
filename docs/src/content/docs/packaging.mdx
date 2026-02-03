@@ -1,20 +1,7 @@
 ---
 title: Packaging
-description: MSIX and NSIS packaging details.
+description: NSIS packaging details.
 ---
-
-## MSIX packaging (Microsoft Store)
-
-```powershell
-.\build_msix.ps1 -Configuration Release -Platform x64
-```
-
-Output:
-- `dist\msix\CBXShell_5.0.0.0_x64.msix`
-
-Requirements:
-- Windows SDK 10.0.22621.0 or later
-- Code signing certificate for Store submission
 
 ## NSIS installer (GitHub Releases)
 
@@ -27,12 +14,3 @@ Output:
 
 Requirements:
 - NSIS 3.x or later
-
-## Asset requirements
-
-Create the following images under `Assets/` for MSIX:
-- `StoreLogo.png` (50x50)
-- `Square44x44Logo.png` (44x44)
-- `Square150x150Logo.png` (150x150)
-- `Wide310x150Logo.png` (310x150)
-- `SplashScreen.png` (620x300)

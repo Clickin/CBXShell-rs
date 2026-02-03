@@ -1,18 +1,28 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 
+const isProd = process.env.NODE_ENV === "production";
+
 export default defineConfig({
-  site: "https://docs.example.com",
+  site: "https://clickin.github.io/CBXShell-rs/",
+  base: isProd ? "/CBXShell-rs/" : "/",
   integrations: [
     starlight({
       title: "CBXShell",
-      description:
-        "Modern Windows Shell Extension for comic book archive thumbnails.",
+      description: "Modern Windows Shell Extension for comic book archive thumbnails.",
       defaultLocale: "root",
       locales: {
         root: { label: "English", lang: "en" },
         ko: { label: "한국어", lang: "ko" }
       },
+      customCss: ["./src/styles/custom.css"],
+      social: [
+        {
+          icon: "github",
+          label: "GitHub",
+          href: "https://github.com/Clickin/CBXShell-rs"
+        }
+      ],
       sidebar: [
         {
           label: "Getting Started",
@@ -34,8 +44,7 @@ export default defineConfig({
           label: "Reference",
           items: [
             { label: "Logging", link: "/logging/" },
-            { label: "Project Structure", link: "/structure/" },
-            { label: "Roadmap", link: "/roadmap/" }
+            { label: "Project Structure", link: "/structure/" }
           ]
         }
       ]

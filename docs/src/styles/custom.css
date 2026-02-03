@@ -1,0 +1,184 @@
+/* Industrial Rust theme */
+:root {
+	--sl-hue-orange: 22;
+	--sl-hue-gray: 28;
+	--sl-color-accent-low: #fde9db;
+	--sl-color-accent: #d8612b;
+	--sl-color-accent-high: #f08a52;
+	--sl-color-white: #1f2933;
+	--sl-color-gray-1: #2f3a45;
+	--sl-color-gray-2: #4b5563;
+	--sl-color-gray-3: #6b7280;
+	--sl-color-gray-4: #cbd5e1;
+	--sl-color-gray-5: #e5e7eb;
+	--sl-color-gray-6: #f3f4f6;
+	--sl-color-black: #0b0d10;
+	--sl-color-bg: #ffffff;
+	--sl-color-bg-nav: #f7f7f8;
+	--sl-color-bg-sidebar: #fbfbfc;
+	--sl-color-hairline-light: #e5e7eb;
+	--sl-font-system: "Segoe UI", "Segoe UI Variable", "Helvetica Neue", sans-serif;
+	--sl-font-mono: "Consolas", "Monaco", monospace;
+	--sl-card-bg: #ffffff;
+	--sl-card-border: #e6e2dd;
+	--sl-card-shadow: rgba(30, 41, 59, 0.08);
+}
+
+[data-theme="dark"] {
+	--sl-color-accent-low: #3a1f14;
+	--sl-color-accent: #e0662c;
+	--sl-color-accent-high: #ff9b64;
+	--sl-color-white: #f3f2ef;
+	--sl-color-gray-1: #e2e8f0;
+	--sl-color-gray-2: #cbd5e1;
+	--sl-color-gray-3: #94a3b8;
+	--sl-color-gray-4: #475569;
+	--sl-color-gray-5: #1f2937;
+	--sl-color-gray-6: #111827;
+	--sl-color-black: #07090c;
+	--sl-color-bg: #0b0f14;
+	--sl-color-bg-nav: #0f141c;
+	--sl-color-bg-sidebar: #0f141c;
+	--sl-color-hairline-light: #222836;
+	--sl-card-bg: rgba(17, 20, 28, 0.72);
+	--sl-card-border: #2a2f3a;
+	--sl-card-shadow: rgba(0, 0, 0, 0.35);
+}
+
+body {
+	background-image:
+		linear-gradient(rgba(216, 97, 43, 0.04) 1px, transparent 1px),
+		linear-gradient(90deg, rgba(216, 97, 43, 0.04) 1px, transparent 1px);
+	background-size: 42px 42px;
+	background-attachment: fixed;
+}
+
+.hero {
+	position: relative;
+	overflow: hidden;
+	padding-bottom: 4rem !important;
+}
+
+.hero::before {
+	content: "";
+	position: absolute;
+	top: -50%;
+	left: -50%;
+	width: 200%;
+	height: 200%;
+	background: radial-gradient(circle at center, rgba(216, 97, 43, 0.18) 0%, transparent 55%);
+	z-index: -1;
+	pointer-events: none;
+}
+
+.hero h1 {
+	font-weight: 800 !important;
+	letter-spacing: -0.02em;
+	text-transform: uppercase;
+	background: linear-gradient(to right, #1f2933, #6b7280);
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+}
+
+[data-theme="dark"] .hero h1 {
+	background: linear-gradient(to right, #fdfaf4, #c5cbd4);
+	-webkit-background-clip: text;
+	-webkit-text-fill-color: transparent;
+}
+
+.hero .tagline {
+	font-size: 1.45rem;
+	color: var(--sl-color-gray-2);
+	max-width: 60ch;
+	margin-inline: auto;
+}
+
+.hero-media {
+	margin: 2rem auto 0;
+	max-width: 720px;
+}
+
+.action {
+	border-radius: 6px !important;
+	font-weight: 600 !important;
+	letter-spacing: 0.05em;
+	text-transform: uppercase;
+	transition: transform 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.action.primary {
+	background: var(--sl-color-accent) !important;
+	color: #fff !important;
+	border: 1px solid var(--sl-color-accent) !important;
+	box-shadow: 0 10px 25px rgba(216, 97, 43, 0.25);
+}
+
+.action.primary:hover {
+	background: var(--sl-color-accent-high) !important;
+	transform: translateY(-2px);
+	box-shadow: 0 16px 30px rgba(216, 97, 43, 0.35);
+}
+
+.action.secondary {
+	background: transparent !important;
+	border: 1px solid var(--sl-color-gray-4) !important;
+	color: var(--sl-color-gray-1) !important;
+}
+
+.action.secondary:hover {
+	border-color: var(--sl-color-gray-2) !important;
+	background: rgba(42, 38, 34, 0.06) !important;
+}
+
+[data-theme="dark"] .action.secondary:hover {
+	background: rgba(255, 255, 255, 0.06) !important;
+}
+
+.card-grid {
+	gap: 1.5rem !important;
+}
+
+.card {
+	background: var(--sl-card-bg) !important;
+	border: 1px solid var(--sl-card-border) !important;
+	border-radius: 10px !important;
+	box-shadow: 0 12px 28px var(--sl-card-shadow);
+	transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.card:hover {
+	transform: translateY(-4px);
+	border-color: var(--sl-color-accent);
+}
+
+.card .title {
+	font-weight: 700 !important;
+	color: var(--sl-color-gray-1) !important;
+}
+
+.card .icon {
+	color: var(--sl-color-accent) !important;
+}
+
+.sidebar-content {
+	background: var(--sl-color-bg-sidebar);
+}
+
+summary {
+	font-weight: 600;
+}
+
+a {
+	text-decoration: none;
+}
+
+pre {
+	border: 1px solid var(--sl-color-hairline-light) !important;
+	border-radius: 8px !important;
+}
+
+img {
+	border-radius: 10px;
+	border: 1px solid var(--sl-color-hairline-light);
+	box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+}

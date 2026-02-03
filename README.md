@@ -44,17 +44,9 @@ cargo test
 
 ## Installation
 
-### Option 1: Windows Store (Recommended)
+### Option 1: NSIS Installer (GitHub Releases)
 
-Download and install CBXShell directly from the Microsoft Store for automatic updates and easy installation.
-
-**Requirements:**
-- Windows 11 21H2 or later
-- Approximately 5 MB of disk space
-
-### Option 2: NSIS Installer (GitHub Releases)
-
-Download the appropriate installer for your system from the [latest release](https://github.com/Clickin/CBXShell-rs/releases/latest):
+Download the appropriate installer for your system from the [latest release](https://github.com/Clickin/CBXShell-rs/releases/latest). This is the primary release channel:
 
 - **x64 (Intel/AMD 64-bit)**: `CBXShell-rs-Setup-x.x.x-x64.exe` - Most Windows PCs
 - **ARM64 (Windows on ARM)**: `CBXShell-rs-Setup-x.x.x-ARM64.exe` - Surface Pro X, Windows Dev Kit 2023
@@ -76,7 +68,7 @@ $env:PROCESSOR_ARCHITECTURE
 - Windows 10 or later (64-bit)
 - For Windows on ARM: Windows 11 or later
 
-### Option 3: Manual Installation (Advanced Users)
+### Option 2: Manual Installation (Advanced Users)
 
 For development or custom deployment:
 
@@ -187,7 +179,6 @@ CBXShell/
 │   │       └── utils.rs         # Helper functions
 │   └── tests/                   # Integration tests
 │       └── test_webp_decode.rs  # WebP decoding tests
-├── build_msix.ps1               # MSIX packaging script
 ├── build_nsis.ps1               # NSIS installer script
 └── README.md
 ```
@@ -287,23 +278,6 @@ This is a rewrite of the original C++ CBXShell project. Contributions are welcom
 - Add tests for new functionality
 - Document public APIs
 
-## Distribution
-
-### Building MSIX Package (Windows Store)
-
-Create an MSIX package for Windows Store submission:
-
-```powershell
-# Build MSIX package
-.\build_msix.ps1 -Configuration Release -Platform x64
-
-# Output: dist\msix\CBXShell_5.0.0.0_x64.msix
-```
-
-**Requirements:**
-- Windows SDK 10.0.22621.0 or later
-- Code signing certificate for Store submission
-
 ### Building NSIS Installer (GitHub Releases)
 
 Create a standalone installer for direct distribution:
@@ -318,16 +292,6 @@ Create a standalone installer for direct distribution:
 **Requirements:**
 - [NSIS 3.x](https://nsis.sourceforge.io/Download) or later
 
-### Asset Requirements
-
-For MSIX packaging, create the following assets in the `Assets/` directory:
-- `StoreLogo.png` (50x50)
-- `Square44x44Logo.png` (44x44)
-- `Square150x150Logo.png` (150x150)
-- `Wide310x150Logo.png` (310x150)
-- `SplashScreen.png` (620x300)
-
-See `Assets/README.md` for detailed specifications.
 
 ## License
 
