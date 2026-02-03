@@ -1,11 +1,9 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
 
-const isProd = process.env.NODE_ENV === "production";
-
 export default defineConfig({
   site: "https://clickin.github.io/CBXShell-rs/",
-  base: isProd ? "/CBXShell-rs/" : "/",
+  base: "/CBXShell-rs/",
   integrations: [
     starlight({
       title: "CBXShell",
