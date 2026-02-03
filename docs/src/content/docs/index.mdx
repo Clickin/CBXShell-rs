@@ -17,12 +17,10 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-const baseUrl = import.meta.env.BASE_URL;
-
 <div class="hero-bg"></div>
 
 <div class="hero-media">
-	<img src={`${baseUrl}images/cbxshell-manager.webp`} alt="CBXShell Manager" />
+	<img src={`${import.meta.env.BASE_URL}images/cbxshell-manager.webp`} alt="CBXShell Manager" />
 </div>
 
 <CardGrid stagger>
