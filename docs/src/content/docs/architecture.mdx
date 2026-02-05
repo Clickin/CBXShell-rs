@@ -3,6 +3,12 @@ title: Architecture
 description: Core COM and archive processing design.
 ---
 
+## Quick answer
+
+- **Core APIs:** `IThumbnailProvider`, `IInitializeWithStream`, `IQueryInfo`
+- **Archive layer:** Trait-based ZIP/RAR/7z adapters
+- **Image pipeline:** `image` + `fast_image_resize`, outputs HBITMAP for Explorer
+
 CBXShell implements modern Windows shell extension interfaces and a trait-based
 archive layer for ZIP, RAR, and 7z formats.
 

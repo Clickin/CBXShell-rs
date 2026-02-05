@@ -1,5 +1,6 @@
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import sitemap from "@astrojs/sitemap";
 
 export default defineConfig({
   site: "https://clickin.github.io/CBXShell-rs/",
@@ -42,10 +43,12 @@ export default defineConfig({
           label: "Reference",
           items: [
             { label: "Logging", link: "/logging/" },
-            { label: "Project Structure", link: "/structure/" }
+            { label: "Project Structure", link: "/structure/" },
+            { label: "FAQ & Troubleshooting", link: "/faq/" }
           ]
         }
       ]
-    })
+    }),
+    sitemap()
   ]
 });
