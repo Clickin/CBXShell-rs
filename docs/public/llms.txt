@@ -1,0 +1,27 @@
+# CBXShell Docs (LLM index)
+
+CBXShell is a modern Windows shell extension (thumbnail handler) written in Rust.
+It renders thumbnails for comic book archives and common archives that contain images.
+
+Key capabilities
+- Archives: .cbz/.cbr/.cb7, ZIP, RAR, 7z
+- Images: JPEG/PNG/GIF/BMP/TIFF/ICO + WebP + AVIF
+- Windows integration: IThumbnailProvider, IInitializeWithStream
+- Includes a configuration manager GUI
+
+Start here
+- Overview: https://clickin.github.io/CBXShell-rs/overview/
+- Installation: https://clickin.github.io/CBXShell-rs/installation/
+- Build & Run: https://clickin.github.io/CBXShell-rs/build/
+- Configuration Manager: https://clickin.github.io/CBXShell-rs/manager/
+- Logging: https://clickin.github.io/CBXShell-rs/logging/
+- Architecture: https://clickin.github.io/CBXShell-rs/architecture/
+- FAQ & Troubleshooting: https://clickin.github.io/CBXShell-rs/faq/
+
+Official links
+- GitHub repo: https://github.com/Clickin/CBXShell-rs
+- Releases: https://github.com/Clickin/CBXShell-rs/releases
+
+Language variants
+- English: https://clickin.github.io/CBXShell-rs/overview/
+- 한국어: https://clickin.github.io/CBXShell-rs/ko/overview/

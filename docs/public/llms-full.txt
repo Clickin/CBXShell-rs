@@ -1,0 +1,41 @@
+# CBXShell Docs (LLM index - full)
+
+CBXShell is a modern Windows shell extension (thumbnail handler) written in Rust.
+It renders thumbnails for comic book archives and common archives that contain images.
+
+Quick facts
+- Platforms: Windows 10/11
+- Archives: .cbz/.cbr/.cb7, ZIP, RAR, 7z
+- Images: JPEG/PNG/GIF/BMP/TIFF/ICO + WebP + AVIF
+- Windows APIs: IThumbnailProvider, IInitializeWithStream
+- Includes a configuration manager GUI
+
+Docs (English)
+- Overview: https://clickin.github.io/CBXShell-rs/overview/
+- Installation: https://clickin.github.io/CBXShell-rs/installation/
+- Build & Run: https://clickin.github.io/CBXShell-rs/build/
+- Configuration Manager: https://clickin.github.io/CBXShell-rs/manager/
+- Logging: https://clickin.github.io/CBXShell-rs/logging/
+- Architecture: https://clickin.github.io/CBXShell-rs/architecture/
+- Packaging: https://clickin.github.io/CBXShell-rs/packaging/
+- Project Structure: https://clickin.github.io/CBXShell-rs/structure/
+- FAQ & Troubleshooting: https://clickin.github.io/CBXShell-rs/faq/
+
+Docs (한국어)
+- 개요: https://clickin.github.io/CBXShell-rs/ko/overview/
+- 설치: https://clickin.github.io/CBXShell-rs/ko/installation/
+- 빌드 & 실행: https://clickin.github.io/CBXShell-rs/ko/build/
+- 설정 관리자: https://clickin.github.io/CBXShell-rs/ko/manager/
+- 로깅: https://clickin.github.io/CBXShell-rs/ko/logging/
+- 아키텍처: https://clickin.github.io/CBXShell-rs/ko/architecture/
+- 패키징: https://clickin.github.io/CBXShell-rs/ko/packaging/
+- 프로젝트 구조: https://clickin.github.io/CBXShell-rs/ko/structure/
+
+Official links
+- GitHub repo: https://github.com/Clickin/CBXShell-rs
+- Releases: https://github.com/Clickin/CBXShell-rs/releases
+
+FAQ topics
+- Explorer thumbnails not appearing
+- Archive entries with unsupported image formats
+- WebP/AVIF decode failures or performance

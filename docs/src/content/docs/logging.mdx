@@ -1,7 +1,13 @@
 ---
 title: Logging
-description: Where to find debug logs.
+description: Where to find CBXShell debug logs and how to tail them.
 ---
+
+## Quick answer
+
+- **Log file:** `%TEMP%\\cbxshell_debug.log`
+- **Best tool:** `Get-Content ... -Wait` to tail in PowerShell
+- **Use case:** Troubleshooting thumbnail generation and archive parsing
 
 CBXShell writes debug logs to a temp file for troubleshooting:
 
