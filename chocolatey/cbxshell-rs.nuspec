@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
+  <metadata>
+    <id>cbxshell-rs</id>
+    <version>0.0.0</version>
+    <title>CBXShell-rs</title>
+    <authors>Clickin</authors>
+    <owners>Clickin</owners>
+    <licenseUrl>https://github.com/Clickin/CBXShell-rs/blob/main/LICENSE.txt</licenseUrl>
+    <projectUrl>https://github.com/Clickin/CBXShell-rs</projectUrl>
+    <iconUrl>https://raw.githubusercontent.com/Clickin/CBXShell-rs/main/Assets/cbx_icon.png</iconUrl>
+    <requireLicenseAcceptance>false</requireLicenseAcceptance>
+    <description>Windows shell extension that provides thumbnail previews for comic book archives (CBZ/CBR/CB7) and related formats.</description>
+    <summary>Comic book archive thumbnail provider for Windows Explorer.</summary>
+    <tags>cbz cbr cb7 comic thumbnail shell-extension explorer windows</tags>
+    <releaseNotes>https://github.com/Clickin/CBXShell-rs/releases</releaseNotes>
+  </metadata>
+  <files>
+    <file src="tools\**" target="tools" />
+  </files>
+</package>
