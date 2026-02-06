@@ -1,6 +1,6 @@
 ---
 title: Packaging
-description: NSIS packaging details.
+description: Packaging details for release channels.
 ---
 
 ## NSIS installer (GitHub Releases)
@@ -13,4 +13,19 @@ Output:
 - `dist\CBXShell-Setup-5.0.0.exe`
 
 Requirements:
+- NSIS 3.x or later
+
+## Chocolatey package
+
+Generate a Chocolatey package that bundles the NSIS installers:
+
+```powershell
+.\build_chocolatey.ps1 -BuildInstallers
+```
+
+Output:
+- `dist\cbxshell-rs.<version>.nupkg`
+
+Requirements:
+- Chocolatey CLI (`choco`)
 - NSIS 3.x or later

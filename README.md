@@ -292,6 +292,21 @@ Create a standalone installer for direct distribution:
 **Requirements:**
 - [NSIS 3.x](https://nsis.sourceforge.io/Download) or later
 
+### Building a Chocolatey Package
+
+Create a Chocolatey package that bundles the NSIS installers:
+
+```powershell
+# Build Chocolatey package (includes installers)
+.\build_chocolatey.ps1 -BuildInstallers
+
+# Output: dist\cbxshell-rs.<version>.nupkg
+```
+
+**Requirements:**
+- [Chocolatey CLI](https://chocolatey.org/install)
+- [NSIS 3.x](https://nsis.sourceforge.io/Download) or later
+
 
 ## License
 
