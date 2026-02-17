@@ -68,9 +68,16 @@ fn try_decode_with_wic(data: &[u8]) -> Result<Option<DynamicImage>> {
     };
     use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
 
-    let factory: IWICImagingFactory = unsafe {
+    let factory: IWICImagingFactory = match unsafe {
         CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER)
-            .map_err(|e| CbxError::Image(format!("WIC factory creation failed: {}", e)))?
+    } {
+        Ok(factory) => factory,
+        Err(e) => {
+            // Some callers (including tests) may run on threads without COM initialization.
+            // Treat WIC setup failures as non-fatal so decode_image can still use image-crate fallback.
+            tracing::debug!("WIC factory creation failed, fallback to image crate: {e}");
+            return Ok(None);
+        }
     };
 
     let stream = unsafe {
