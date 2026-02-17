@@ -35,6 +35,15 @@ Implementations:
 
 ## Image processing
 
-- WebP, AVIF, JPEG, PNG, GIF, BMP, TIFF, ICO via `image` crate
+- Hybrid decode pipeline:
+  - **Primary:** Windows WIC decoder (uses OS codecs, optional modern codec support)
+  - **Fallback:** Rust `image` crate decoder
+- WebP, AVIF, JPEG, PNG, GIF, BMP, TIFF, ICO (availability depends on OS codec installation for WIC path)
 - High-quality resize via `fast_image_resize` (Lanczos3)
 - HBITMAP generation for Explorer integration
+
+### Why WIC-first?
+
+- Keeps binary size smaller compared to bundling full external codec stacks.
+- Lets CBXShell benefit from platform codec updates (for example AVIF support through installed Windows codecs).
+- Maintains compatibility through automatic fallback when WIC decode is unavailable or fails.

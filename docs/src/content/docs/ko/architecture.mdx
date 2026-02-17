@@ -35,6 +35,15 @@ pub trait Archive: Send {
 
 ## 이미지 처리
 
-- `image` crate 기반 WebP, AVIF, JPEG, PNG, GIF, BMP, TIFF, ICO 지원
+- 하이브리드 디코딩 파이프라인:
+  - **우선 경로:** Windows WIC 디코더 (OS 코덱 사용, 최신 코덱 지원은 선택적)
+  - **대체 경로:** Rust `image` crate 디코더
+- WebP, AVIF, JPEG, PNG, GIF, BMP, TIFF, ICO 지원 (WIC 경로는 OS 코덱 설치 상태에 따라 달라질 수 있음)
 - `fast_image_resize` 기반 고품질 리사이즈 (Lanczos3)
 - Explorer 통합을 위한 HBITMAP 생성
+
+### WIC 우선 경로를 쓰는 이유
+
+- 외부 코덱 스택을 번들링하는 방식 대비 바이너리 크기 이점이 있습니다.
+- Windows에 설치된 코덱 업데이트(예: AVIF 코덱)를 활용할 수 있습니다.
+- WIC 디코딩 실패 시 자동 fallback으로 기존 호환성을 유지합니다.
