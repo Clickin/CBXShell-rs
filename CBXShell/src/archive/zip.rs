@@ -182,6 +182,7 @@ impl Archive for ZipArchive {
 mod tests {
     use super::*;
     use std::io::Write;
+    use tempfile::Builder;
     use zip::write::{FileOptions, ZipWriter};
 
     /// Create a test ZIP archive in memory for testing
@@ -211,31 +212,42 @@ mod tests {
 
     #[test]
     fn test_open_valid_zip() {
-        let temp_path = std::env::temp_dir().join("test_valid.zip");
-        create_test_zip_file(&temp_path, &[("test.jpg", b"fake image data")]).unwrap();
+        let temp_file = Builder::new()
+            .prefix("test_valid_")
+            .suffix(".zip")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
+        create_test_zip_file(temp_path, &[("test.jpg", b"fake image data")]).unwrap();
 
-        let archive = ZipArchive::open(&temp_path).unwrap();
+        let archive = ZipArchive::open(temp_path).unwrap();
         assert_eq!(archive.archive_type(), ArchiveType::Zip);
-
-        std::fs::remove_file(&temp_path).ok();
     }
 
     #[test]
     fn test_open_invalid_zip() {
-        let temp_path = std::env::temp_dir().join("test_invalid.zip");
-        std::fs::write(&temp_path, b"not a zip file").unwrap();
+        let temp_file = Builder::new()
+            .prefix("test_invalid_")
+            .suffix(".zip")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
+        std::fs::write(temp_path, b"not a zip file").unwrap();
 
-        let result = ZipArchive::open(&temp_path);
+        let result = ZipArchive::open(temp_path);
         assert!(result.is_err());
-
-        std::fs::remove_file(&temp_path).ok();
     }
 
     #[test]
     fn test_find_first_image_sorted() {
-        let temp_path = std::env::temp_dir().join("test_sorted.zip");
+        let temp_file = Builder::new()
+            .prefix("test_sorted_")
+            .suffix(".zip")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
         create_test_zip_file(
-            &temp_path,
+            temp_path,
             &[
                 ("readme.txt", b"text file"),
                 ("page10.jpg", b"image 10"),
@@ -245,20 +257,23 @@ mod tests {
         )
         .unwrap();
 
-        let archive = ZipArchive::open(&temp_path).unwrap();
+        let archive = ZipArchive::open(temp_path).unwrap();
         let entry = archive.find_first_image(true).unwrap();
 
         // Natural sort: page1.jpg < page2.jpg < page10.jpg
         assert_eq!(entry.name, "page1.jpg");
-
-        std::fs::remove_file(&temp_path).ok();
     }
 
     #[test]
     fn test_find_first_image_unsorted() {
-        let temp_path = std::env::temp_dir().join("test_unsorted.zip");
+        let temp_file = Builder::new()
+            .prefix("test_unsorted_")
+            .suffix(".zip")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
         create_test_zip_file(
-            &temp_path,
+            temp_path,
             &[
                 ("readme.txt", b"text file"),
                 ("page10.jpg", b"image 10"),
@@ -267,48 +282,57 @@ mod tests {
         )
         .unwrap();
 
-        let archive = ZipArchive::open(&temp_path).unwrap();
+        let archive = ZipArchive::open(temp_path).unwrap();
         let entry = archive.find_first_image(false).unwrap();
 
         // Unsorted: first image encountered
         assert_eq!(entry.name, "page10.jpg");
-
-        std::fs::remove_file(&temp_path).ok();
     }
 
     #[test]
     fn test_no_images_found() {
-        let temp_path = std::env::temp_dir().join("test_no_images.zip");
-        create_test_zip_file(&temp_path, &[("readme.txt", b"text"), ("data.json", b"{}")]).unwrap();
+        let temp_file = Builder::new()
+            .prefix("test_no_images_")
+            .suffix(".zip")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
+        create_test_zip_file(temp_path, &[("readme.txt", b"text"), ("data.json", b"{}")]).unwrap();
 
-        let archive = ZipArchive::open(&temp_path).unwrap();
+        let archive = ZipArchive::open(temp_path).unwrap();
         let result = archive.find_first_image(true);
 
         assert!(result.is_err());
-
-        std::fs::remove_file(&temp_path).ok();
     }
 
     #[test]
     fn test_extract_entry() {
         let content = b"fake jpeg data";
-        let temp_path = std::env::temp_dir().join("test_extract.zip");
-        create_test_zip_file(&temp_path, &[("image.jpg", content)]).unwrap();
+        let temp_file = Builder::new()
+            .prefix("test_extract_")
+            .suffix(".zip")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
+        create_test_zip_file(temp_path, &[("image.jpg", content)]).unwrap();
 
-        let archive = ZipArchive::open(&temp_path).unwrap();
+        let archive = ZipArchive::open(temp_path).unwrap();
         let entry = archive.find_first_image(false).unwrap();
         let extracted = archive.extract_entry(&entry).unwrap();
 
         assert_eq!(extracted, content);
-
-        std::fs::remove_file(&temp_path).ok();
     }
 
     #[test]
     fn test_get_metadata() {
-        let temp_path = std::env::temp_dir().join("test_metadata.zip");
+        let temp_file = Builder::new()
+            .prefix("test_metadata_")
+            .suffix(".zip")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
         create_test_zip_file(
-            &temp_path,
+            temp_path,
             &[
                 ("page1.jpg", b"image 1"),
                 ("page2.jpg", b"image 2"),
@@ -317,15 +341,13 @@ mod tests {
         )
         .unwrap();
 
-        let archive = ZipArchive::open(&temp_path).unwrap();
+        let archive = ZipArchive::open(temp_path).unwrap();
         let metadata = archive.get_metadata().unwrap();
 
         assert_eq!(metadata.total_files, 3);
         assert_eq!(metadata.image_count, 2);
         assert!(metadata.compressed_size > 0);
         assert_eq!(metadata.archive_type, ArchiveType::Zip);
-
-        std::fs::remove_file(&temp_path).ok();
     }
 }
 
