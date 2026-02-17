@@ -17,7 +17,7 @@ Write-Host "=====================================" -ForegroundColor Cyan
 Write-Host ""
 
 # Version from AppxManifest.xml
-$Version = "5.1.1.0"
+$Version = "5.1.2.0"
 
 # Architectures to build
 $Platforms = @("x64", "ARM64")
