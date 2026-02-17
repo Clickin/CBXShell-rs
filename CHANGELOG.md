@@ -5,6 +5,15 @@ All notable changes to CBXShell-rs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [5.1.2] - 2026-02-17
+
+### Added
+- GitHub Actions Windows CI workflow for `master`/PR validation (x64 tests + x64/ARM64 release build checks).
+- GitHub Actions Windows release workflow that builds NSIS installers for x64 and ARM64 and publishes them to GitHub Releases.
+
+### Changed
+- Release process now supports automatic release-note generation from commits using GitHub generated notes.
+
 ## [5.1.0] - 2025-10-25
 
 ### Performance Improvements
@@ -53,5 +62,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tooltip support via IQueryInfo
 - File-based debug logging
 
+[5.1.2]: https://github.com/Clickin/CBXShell-rs/compare/v5.1.0...v5.1.2
 [5.1.0]: https://github.com/Clickin/CBXShell-rs/compare/v5.0.0...v5.1.0
 [5.0.0]: https://github.com/Clickin/CBXShell-rs/releases/tag/v5.0.0

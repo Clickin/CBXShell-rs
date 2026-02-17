@@ -11,7 +11,7 @@
   <Identity
     Name="Clickin.CBXShell-rs"
     Publisher="CN=80480E4E-FDCA-4038-8FF8-CE4727004298"
-    Version="5.1.1.0"
+    Version="5.1.2.0"
     ProcessorArchitecture="neutral" />
 
   <Properties>

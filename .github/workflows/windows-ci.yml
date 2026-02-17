@@ -1,0 +1,53 @@
+name: Windows CI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [master]
+    paths-ignore:
+      - "docs/**"
+      - "**/*.md"
+  pull_request:
+    paths-ignore:
+      - "docs/**"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Build/Test (${{ matrix.arch }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            rust_target: x86_64-pc-windows-msvc
+            run_tests: true
+          - arch: ARM64
+            rust_target: aarch64-pc-windows-msvc
+            run_tests: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+            CBXShell -> CBXShell/target
+
+      - name: Cargo build (release)
+        run: cargo build --release --target ${{ matrix.rust_target }}
+
+      - name: Cargo test (host x64 only)
+        if: matrix.run_tests
+        run: cargo test --target ${{ matrix.rust_target }}
