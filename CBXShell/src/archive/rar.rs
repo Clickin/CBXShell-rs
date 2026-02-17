@@ -535,6 +535,7 @@ impl Archive for RarArchiveFromMemory {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use tempfile::Builder;
 
     // Note: Creating valid RAR archives programmatically is not possible
     // with the unrar crate (it's extraction-only). Tests will need to use
@@ -549,13 +550,16 @@ mod tests {
 
     #[test]
     fn test_open_invalid_rar() {
-        let temp_path = std::env::temp_dir().join("test_invalid.rar");
-        std::fs::write(&temp_path, b"not a rar file").unwrap();
+        let temp_file = Builder::new()
+            .prefix("test_invalid_")
+            .suffix(".rar")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
+        std::fs::write(temp_path, b"not a rar file").unwrap();
 
-        let result = RarArchive::open(&temp_path);
+        let result = RarArchive::open(temp_path);
         assert!(result.is_err());
-
-        std::fs::remove_file(&temp_path).ok();
     }
 
     #[test]
