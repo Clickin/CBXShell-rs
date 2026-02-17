@@ -148,13 +148,25 @@ fn set_extension_handlers(extension: &str, thumbnail: bool, infotip: bool) -> Re
 }
 
 /// Read the sorting preference from registry
+fn sort_enabled_from_no_sort(value: u32) -> bool {
+    value == 0
+}
+
+fn no_sort_value(sort_enabled: bool) -> u32 {
+    if sort_enabled {
+        0
+    } else {
+        1
+    }
+}
+
 fn read_sort_setting() -> Result<bool> {
     let hkcu = RegKey::predef(HKEY_CURRENT_USER);
 
     match hkcu.open_subkey(CONFIG_KEY_PATH) {
         Ok(key) => {
             match key.get_value::<u32, _>("NoSort") {
-                Ok(value) => Ok(value == 0), // NoSort=0 means sort enabled
+                Ok(value) => Ok(sort_enabled_from_no_sort(value)), // NoSort=0 means sort enabled
                 Err(_) => Ok(false), // Default: sorting disabled (NoSort=1) for better performance
             }
         }
@@ -182,7 +194,7 @@ fn write_sort_setting(sort_enabled: bool) -> Result<()> {
         .create_subkey(CONFIG_KEY_PATH)
         .context("Failed to create config key")?;
 
-    let no_sort_value: u32 = if sort_enabled { 0 } else { 1 };
+    let no_sort_value: u32 = no_sort_value(sort_enabled);
     key.set_value("NoSort", &no_sort_value)
         .context("Failed to set NoSort value")?;
 
@@ -196,7 +208,7 @@ fn write_sort_preview_setting(sort_enabled: bool) -> Result<()> {
         .create_subkey(CONFIG_KEY_PATH)
         .context("Failed to create config key")?;
 
-    let no_sort_value: u32 = if sort_enabled { 0 } else { 1 };
+    let no_sort_value: u32 = no_sort_value(sort_enabled);
     key.set_value("NoSortPreview", &no_sort_value)
         .context("Failed to set NoSortPreview value")?;
 
@@ -244,12 +256,31 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_sort_enabled_no_sort_mapping() {
+        assert!(sort_enabled_from_no_sort(0));
+        assert!(!sort_enabled_from_no_sort(1));
+    }
+
+    #[test]
+    fn test_no_sort_value_mapping() {
+        assert_eq!(no_sort_value(true), 0);
+        assert_eq!(no_sort_value(false), 1);
+    }
+}
+
+#[cfg(all(test, windows, feature = "e2e-windows"))]
+mod windows_registry_tests {
+    use super::*;
+
+    #[test]
+    #[ignore = "requires live HKCU registry state"]
     fn test_check_dll_registration() {
         // Just verify it doesn't crash
         let _registered = check_dll_registration();
     }
 
     #[test]
+    #[ignore = "requires live HKCU registry state"]
     fn test_check_extension_handlers() {
         // Test with .cbz (may or may not be registered)
         let result = check_extension_handlers(".cbz");
@@ -262,6 +293,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires live HKCU registry state"]
     fn test_read_sort_setting() {
         let result = read_sort_setting();
         assert!(result.is_ok());
@@ -272,6 +304,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires live HKCU registry state"]
     fn test_read_app_state() {
         // Should not crash even if registry is not configured
         let result = read_app_state();
@@ -282,6 +315,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "mutates live HKCU registry keys"]
     fn test_write_and_read_sort_setting() {
         // Try to write and read back (may fail without permissions)
         if write_sort_setting(true).is_ok() {

@@ -1,17 +1,12 @@
+use std::sync::atomic::AtomicU32;
+use std::sync::Mutex;
 ///! CBXShell main COM object implementation
 ///!
 ///! Migrated to IThumbnailProvider + IInitializeWithStream (modern Windows API)
-
 use windows::{
-    core::*,
-    Win32::Foundation::*,
-    Win32::Graphics::Gdi::HBITMAP,
-    Win32::UI::Shell::*,
-    Win32::UI::Shell::PropertiesSystem::*,
-    Win32::System::Com::*,
+    core::*, Win32::Foundation::*, Win32::Graphics::Gdi::HBITMAP, Win32::System::Com::*,
+    Win32::UI::Shell::PropertiesSystem::*, Win32::UI::Shell::*,
 };
-use std::sync::atomic::AtomicU32;
-use std::sync::Mutex;
 
 /// CBXShell COM object
 /// Implements: IThumbnailProvider, IInitializeWithStream, IQueryInfo
@@ -67,19 +62,22 @@ impl CBXShell {
     /// * `Ok(HBITMAP)` - Successfully created thumbnail
     /// * `Err(CbxError)` - Failed to extract or create thumbnail
     fn extract_thumbnail_internal(&self, cx: u32) -> crate::utils::error::Result<HBITMAP> {
-        use crate::archive::{open_archive_from_stream, IStreamReader, should_sort_images};
+        use crate::archive::{open_archive_from_stream, should_sort_images, IStreamReader};
         use crate::image_processor::thumbnail::create_thumbnail_with_size;
         use crate::utils::error::CbxError;
 
-        crate::utils::debug_log::debug_log(">>>>> extract_thumbnail_internal STARTING (OPTIMIZED STREAMING) <<<<<");
+        crate::utils::debug_log::debug_log(
+            ">>>>> extract_thumbnail_internal STARTING (OPTIMIZED STREAMING) <<<<<",
+        );
         crate::utils::debug_log::debug_log(&format!("Requested thumbnail size: {}x{}", cx, cx));
 
         // Step 1: Get IStream from IInitializeWithStream
-        let stream = self.get_stream()
-            .ok_or_else(|| {
-                crate::utils::debug_log::debug_log("ERROR: No IStream set in extract_thumbnail_internal");
-                CbxError::Archive("No stream initialized".to_string())
-            })?;
+        let stream = self.get_stream().ok_or_else(|| {
+            crate::utils::debug_log::debug_log(
+                "ERROR: No IStream set in extract_thumbnail_internal",
+            );
+            CbxError::Archive("No stream initialized".to_string())
+        })?;
 
         tracing::info!("Extracting thumbnail from IStream (streaming mode)");
         crate::utils::debug_log::debug_log("Step 1: IStream retrieved successfully");
@@ -105,13 +103,19 @@ impl CBXShell {
         crate::utils::debug_log::debug_log("Step 5: Finding first image...");
         let entry = archive.find_first_image(sort)?;
         tracing::info!("Found image: {} ({} bytes)", entry.name, entry.size);
-        crate::utils::debug_log::debug_log(&format!("Step 5: Found image: {} ({} bytes)", entry.name, entry.size));
+        crate::utils::debug_log::debug_log(&format!(
+            "Step 5: Found image: {} ({} bytes)",
+            entry.name, entry.size
+        ));
 
         // Step 6: Extract image data
         crate::utils::debug_log::debug_log("Step 6: Extracting image data...");
         let image_data = archive.extract_entry(&entry)?;
         tracing::debug!("Extracted {} bytes of image data", image_data.len());
-        crate::utils::debug_log::debug_log(&format!("Step 6: Extracted {} bytes of image data", image_data.len()));
+        crate::utils::debug_log::debug_log(&format!(
+            "Step 6: Extracted {} bytes of image data",
+            image_data.len()
+        ));
 
         // Step 6b: Verify image format using magic headers
         crate::utils::debug_log::debug_log("Step 6b: Verifying image format with magic headers...");
@@ -121,28 +125,47 @@ impl CBXShell {
         // Step 7: Use requested size from IThumbnailProvider::GetThumbnail
         // IThumbnailProvider provides cx (max dimension), we create square thumbnails
         let thumbnail_size = if cx == 0 { 256 } else { cx };
-        tracing::debug!("Creating thumbnail with size: {}x{}", thumbnail_size, thumbnail_size);
-        crate::utils::debug_log::debug_log(&format!("Step 7: Creating thumbnail with size: {}x{}", thumbnail_size, thumbnail_size));
+        tracing::debug!(
+            "Creating thumbnail with size: {}x{}",
+            thumbnail_size,
+            thumbnail_size
+        );
+        crate::utils::debug_log::debug_log(&format!(
+            "Step 7: Creating thumbnail with size: {}x{}",
+            thumbnail_size, thumbnail_size
+        ));
 
         // Step 8: Create thumbnail HBITMAP
         crate::utils::debug_log::debug_log("Step 8: Creating thumbnail HBITMAP...");
-        let hbitmap = match create_thumbnail_with_size(&image_data, thumbnail_size, thumbnail_size) {
+        let hbitmap = match create_thumbnail_with_size(&image_data, thumbnail_size, thumbnail_size)
+        {
             Ok(bmp) => {
                 tracing::info!("Thumbnail created successfully: {:?}", bmp);
-                crate::utils::debug_log::debug_log(&format!("Step 8: Thumbnail created successfully - HBITMAP: {:?} (handle: 0x{:x})",
-                    bmp, bmp.0 as usize));
+                crate::utils::debug_log::debug_log(&format!(
+                    "Step 8: Thumbnail created successfully - HBITMAP: {:?} (handle: 0x{:x})",
+                    bmp, bmp.0 as usize
+                ));
                 bmp
             }
             Err(e) => {
                 tracing::error!("Failed to create thumbnail: {}", e);
-                crate::utils::debug_log::debug_log(&format!("ERROR Step 8: Thumbnail creation failed: {}", e));
-                crate::utils::debug_log::debug_log(&format!("ERROR: Image data size: {} bytes, requested size: {}x{}",
-                    image_data.len(), thumbnail_size, thumbnail_size));
+                crate::utils::debug_log::debug_log(&format!(
+                    "ERROR Step 8: Thumbnail creation failed: {}",
+                    e
+                ));
+                crate::utils::debug_log::debug_log(&format!(
+                    "ERROR: Image data size: {} bytes, requested size: {}x{}",
+                    image_data.len(),
+                    thumbnail_size,
+                    thumbnail_size
+                ));
                 return Err(e);
             }
         };
 
-        crate::utils::debug_log::debug_log(">>>>> extract_thumbnail_internal COMPLETED SUCCESSFULLY <<<<<");
+        crate::utils::debug_log::debug_log(
+            ">>>>> extract_thumbnail_internal COMPLETED SUCCESSFULLY <<<<<",
+        );
         Ok(hbitmap)
     }
 }
@@ -180,9 +203,17 @@ impl IInitializeWithStream_Impl for CBXShell {
 
 // IThumbnailProvider implementation (replaces IExtractImage/IExtractImage2)
 impl IThumbnailProvider_Impl for CBXShell {
-    fn GetThumbnail(&self, cx: u32, phbmp: *mut HBITMAP, pdwalpha: *mut WTS_ALPHATYPE) -> Result<()> {
+    fn GetThumbnail(
+        &self,
+        cx: u32,
+        phbmp: *mut HBITMAP,
+        pdwalpha: *mut WTS_ALPHATYPE,
+    ) -> Result<()> {
         tracing::info!("IThumbnailProvider::GetThumbnail called (cx={})", cx);
-        crate::utils::debug_log::debug_log(&format!("===== IThumbnailProvider::GetThumbnail CALLED (cx={}) =====", cx));
+        crate::utils::debug_log::debug_log(&format!(
+            "===== IThumbnailProvider::GetThumbnail CALLED (cx={}) =====",
+            cx
+        ));
 
         // Validate output pointers
         if phbmp.is_null() {
@@ -194,8 +225,10 @@ impl IThumbnailProvider_Impl for CBXShell {
         match self.extract_thumbnail_internal(cx) {
             Ok(hbitmap) => {
                 tracing::info!("GetThumbnail succeeded, returning HBITMAP: {:?}", hbitmap);
-                crate::utils::debug_log::debug_log(&format!("SUCCESS: GetThumbnail completed - HBITMAP: {:?} (handle: 0x{:x})",
-                    hbitmap, hbitmap.0 as usize));
+                crate::utils::debug_log::debug_log(&format!(
+                    "SUCCESS: GetThumbnail completed - HBITMAP: {:?} (handle: 0x{:x})",
+                    hbitmap, hbitmap.0 as usize
+                ));
 
                 // UNAVOIDABLE UNSAFE: Writing to COM output parameters
                 // Why unsafe is required:
@@ -217,7 +250,9 @@ impl IThumbnailProvider_Impl for CBXShell {
                     // Use WTSAT_RGB since we've removed all transparency
                     if !pdwalpha.is_null() {
                         *pdwalpha = WTSAT_RGB; // Value should be 1
-                        crate::utils::debug_log::debug_log("Alpha type set to WTSAT_RGB (no alpha channel)");
+                        crate::utils::debug_log::debug_log(
+                            "Alpha type set to WTSAT_RGB (no alpha channel)",
+                        );
                     }
                 }
 
@@ -252,32 +287,31 @@ impl IQueryInfo_Impl for CBXShell {
     }
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows, feature = "e2e-windows"))]
 mod tests {
     use super::*;
-    use windows::Win32::Graphics::Gdi::DeleteObject;
-    use windows::Win32::System::Com::{
-        CoInitializeEx, CoUninitialize, COINIT_APARTMENTTHREADED, IStream, STREAM_SEEK_SET,
-    };
-    use windows::Win32::System::Com::StructuredStorage::CreateStreamOnHGlobal;
-    use windows::Win32::Foundation::BOOL;
     use std::io::Write as _;
+    use windows::Win32::Foundation::BOOL;
+    use windows::Win32::Graphics::Gdi::DeleteObject;
+    use windows::Win32::System::Com::StructuredStorage::CreateStreamOnHGlobal;
+    use windows::Win32::System::Com::{
+        CoInitializeEx, CoUninitialize, IStream, COINIT_APARTMENTTHREADED, STREAM_SEEK_SET,
+    };
     use zip::write::{FileOptions, ZipWriter};
 
     /// Minimal valid JPEG (1x1 red pixel)
     const MINIMAL_JPEG: &[u8] = &[
-        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00,
-        0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43, 0x00, 0x03, 0x02, 0x02,
-        0x02, 0x02, 0x02, 0x03, 0x02, 0x02, 0x02, 0x03, 0x03, 0x03, 0x03, 0x04, 0x06, 0x04,
-        0x04, 0x04, 0x04, 0x04, 0x08, 0x06, 0x06, 0x05, 0x06, 0x09, 0x08, 0x0A, 0x0A, 0x09,
-        0x08, 0x09, 0x09, 0x0A, 0x0C, 0x0F, 0x0C, 0x0A, 0x0B, 0x0E, 0x0B, 0x09, 0x09, 0x0D,
-        0x11, 0x0D, 0x0E, 0x0F, 0x10, 0x10, 0x11, 0x10, 0x0A, 0x0C, 0x12, 0x13, 0x12, 0x10,
-        0x13, 0x0F, 0x10, 0x10, 0x10, 0xFF, 0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01, 0x00, 0x01,
-        0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4, 0x00, 0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x09, 0xFF, 0xC4,
-        0x00, 0x14, 0x10, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xDA, 0x00, 0x08, 0x01, 0x01, 0x00, 0x00,
-        0x3F, 0x00, 0x54, 0xDF, 0xFF, 0xD9,
+        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46, 0x00, 0x01, 0x01, 0x00, 0x00,
+        0x01, 0x00, 0x01, 0x00, 0x00, 0xFF, 0xDB, 0x00, 0x43, 0x00, 0x03, 0x02, 0x02, 0x02, 0x02,
+        0x02, 0x03, 0x02, 0x02, 0x02, 0x03, 0x03, 0x03, 0x03, 0x04, 0x06, 0x04, 0x04, 0x04, 0x04,
+        0x04, 0x08, 0x06, 0x06, 0x05, 0x06, 0x09, 0x08, 0x0A, 0x0A, 0x09, 0x08, 0x09, 0x09, 0x0A,
+        0x0C, 0x0F, 0x0C, 0x0A, 0x0B, 0x0E, 0x0B, 0x09, 0x09, 0x0D, 0x11, 0x0D, 0x0E, 0x0F, 0x10,
+        0x10, 0x11, 0x10, 0x0A, 0x0C, 0x12, 0x13, 0x12, 0x10, 0x13, 0x0F, 0x10, 0x10, 0x10, 0xFF,
+        0xC0, 0x00, 0x0B, 0x08, 0x00, 0x01, 0x00, 0x01, 0x01, 0x01, 0x11, 0x00, 0xFF, 0xC4, 0x00,
+        0x14, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x09, 0xFF, 0xC4, 0x00, 0x14, 0x10, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00,
+        0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xFF, 0xDA, 0x00, 0x08,
+        0x01, 0x01, 0x00, 0x00, 0x3F, 0x00, 0x54, 0xDF, 0xFF, 0xD9,
     ];
 
     /// Create a test CBZ archive in memory and return as IStream
@@ -286,7 +320,8 @@ mod tests {
         let mut buffer = Vec::new();
         {
             let mut zip = ZipWriter::new(std::io::Cursor::new(&mut buffer));
-            zip.start_file("page001.jpg", FileOptions::default()).unwrap();
+            zip.start_file("page001.jpg", FileOptions::default())
+                .unwrap();
             zip.write_all(MINIMAL_JPEG).unwrap();
             zip.finish().unwrap();
         }
@@ -297,11 +332,14 @@ mod tests {
 
             // Write ZIP data to stream
             let mut bytes_written = 0u32;
-            if stream.Write(
-                buffer.as_ptr() as *const _,
-                buffer.len() as u32,
-                Some(&mut bytes_written)
-            ).is_err() {
+            if stream
+                .Write(
+                    buffer.as_ptr() as *const _,
+                    buffer.len() as u32,
+                    Some(&mut bytes_written),
+                )
+                .is_err()
+            {
                 return Err(Error::from(E_FAIL));
             }
 
@@ -315,6 +353,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires Windows COM/GDI runtime"]
     fn test_extract_thumbnail_pipeline() {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
@@ -326,21 +365,25 @@ mod tests {
             let thumbnail_provider = CBXShell::new().expect("Failed to create CBXShell");
 
             // Cast to IInitializeWithStream and initialize
-            let init_stream: IInitializeWithStream = thumbnail_provider.cast()
+            let init_stream: IInitializeWithStream = thumbnail_provider
+                .cast()
                 .expect("Failed to cast to IInitializeWithStream");
 
-            init_stream.Initialize(Some(&stream), STGM_READ.0)
+            init_stream
+                .Initialize(Some(&stream), STGM_READ.0)
                 .expect("IInitializeWithStream::Initialize failed");
 
             // Cast to IThumbnailProvider
-            let thumb_provider: IThumbnailProvider = init_stream.cast()
+            let thumb_provider: IThumbnailProvider = init_stream
+                .cast()
                 .expect("Failed to cast to IThumbnailProvider");
 
             // Get thumbnail
             let mut hbitmap = HBITMAP::default();
             let mut alpha_type = WTS_ALPHATYPE::default();
 
-            thumb_provider.GetThumbnail(256, &mut hbitmap, &mut alpha_type)
+            thumb_provider
+                .GetThumbnail(256, &mut hbitmap, &mut alpha_type)
                 .expect("IThumbnailProvider::GetThumbnail failed");
 
             assert_ne!(hbitmap.0, 0, "HBITMAP should not be null");
@@ -351,6 +394,7 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "requires Windows COM runtime"]
     fn test_extract_without_initialize_fails() {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
@@ -358,20 +402,25 @@ mod tests {
             // Create CBXShell without initializing stream
             let thumbnail_provider = CBXShell::new().expect("Failed to create CBXShell");
 
-            let thumb_provider: IThumbnailProvider = thumbnail_provider.cast()
+            let thumb_provider: IThumbnailProvider = thumbnail_provider
+                .cast()
                 .expect("Failed to cast to IThumbnailProvider");
 
             let mut hbitmap = HBITMAP::default();
             let mut alpha_type = WTS_ALPHATYPE::default();
 
             let result = thumb_provider.GetThumbnail(256, &mut hbitmap, &mut alpha_type);
-            assert!(result.is_err(), "GetThumbnail should fail without Initialize");
+            assert!(
+                result.is_err(),
+                "GetThumbnail should fail without Initialize"
+            );
 
             CoUninitialize();
         }
     }
 
     #[test]
+    #[ignore = "requires Windows COM/GDI runtime"]
     fn test_thumbnail_size_parameter() {
         unsafe {
             let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
@@ -388,7 +437,8 @@ mod tests {
             let mut hbitmap = HBITMAP::default();
             let mut alpha_type = WTS_ALPHATYPE::default();
 
-            thumb_provider.GetThumbnail(128, &mut hbitmap, &mut alpha_type)
+            thumb_provider
+                .GetThumbnail(128, &mut hbitmap, &mut alpha_type)
                 .expect("GetThumbnail failed with cx=128");
 
             assert_ne!(hbitmap.0, 0, "HBITMAP should not be null");
