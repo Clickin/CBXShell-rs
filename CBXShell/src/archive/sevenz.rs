@@ -215,6 +215,7 @@ mod tests {
     use super::*;
     use sevenz_rust::SevenZWriter;
     use std::io::Write;
+    use tempfile::Builder;
 
     /// Create a test 7z archive on disk
     fn create_test_7z_file(path: &Path, files: &[(&str, &[u8])]) -> Result<()> {
@@ -240,31 +241,42 @@ mod tests {
 
     #[test]
     fn test_open_valid_7z() {
-        let temp_path = std::env::temp_dir().join("test_valid.7z");
-        create_test_7z_file(&temp_path, &[("test.jpg", b"fake image data")]).unwrap();
+        let temp_file = Builder::new()
+            .prefix("test_valid_")
+            .suffix(".7z")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
+        create_test_7z_file(temp_path, &[("test.jpg", b"fake image data")]).unwrap();
 
-        let archive = SevenZipArchive::open(&temp_path).unwrap();
+        let archive = SevenZipArchive::open(temp_path).unwrap();
         assert_eq!(archive.archive_type(), ArchiveType::SevenZip);
-
-        std::fs::remove_file(&temp_path).ok();
     }
 
     #[test]
     fn test_open_invalid_7z() {
-        let temp_path = std::env::temp_dir().join("test_invalid.7z");
-        std::fs::write(&temp_path, b"not a 7z file").unwrap();
+        let temp_file = Builder::new()
+            .prefix("test_invalid_")
+            .suffix(".7z")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
+        std::fs::write(temp_path, b"not a 7z file").unwrap();
 
-        let result = SevenZipArchive::open(&temp_path);
+        let result = SevenZipArchive::open(temp_path);
         assert!(result.is_err());
-
-        std::fs::remove_file(&temp_path).ok();
     }
 
     #[test]
     fn test_find_first_image_sorted() {
-        let temp_path = std::env::temp_dir().join("test_sorted.7z");
+        let temp_file = Builder::new()
+            .prefix("test_sorted_")
+            .suffix(".7z")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
         create_test_7z_file(
-            &temp_path,
+            temp_path,
             &[
                 ("readme.txt", b"text file"),
                 ("page10.jpg", b"image 10"),
@@ -274,20 +286,23 @@ mod tests {
         )
         .unwrap();
 
-        let archive = SevenZipArchive::open(&temp_path).unwrap();
+        let archive = SevenZipArchive::open(temp_path).unwrap();
         let entry = archive.find_first_image(true).unwrap();
 
         // Natural sort: page1.jpg < page2.jpg < page10.jpg
         assert_eq!(entry.name, "page1.jpg");
-
-        std::fs::remove_file(&temp_path).ok();
     }
 
     #[test]
     fn test_find_first_image_unsorted() {
-        let temp_path = std::env::temp_dir().join("test_unsorted.7z");
+        let temp_file = Builder::new()
+            .prefix("test_unsorted_")
+            .suffix(".7z")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
         create_test_7z_file(
-            &temp_path,
+            temp_path,
             &[
                 ("readme.txt", b"text file"),
                 ("page10.jpg", b"image 10"),
@@ -296,7 +311,7 @@ mod tests {
         )
         .unwrap();
 
-        let archive = SevenZipArchive::open(&temp_path).unwrap();
+        let archive = SevenZipArchive::open(temp_path).unwrap();
         let entry = archive.find_first_image(false).unwrap();
 
         // Unsorted: first image encountered (order depends on archive library)
@@ -306,43 +321,52 @@ mod tests {
             "Expected an image file, got: {}",
             entry.name
         );
-
-        std::fs::remove_file(&temp_path).ok();
     }
 
     #[test]
     fn test_no_images_found() {
-        let temp_path = std::env::temp_dir().join("test_no_images.7z");
-        create_test_7z_file(&temp_path, &[("readme.txt", b"text"), ("data.json", b"{}")]).unwrap();
+        let temp_file = Builder::new()
+            .prefix("test_no_images_")
+            .suffix(".7z")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
+        create_test_7z_file(temp_path, &[("readme.txt", b"text"), ("data.json", b"{}")]).unwrap();
 
-        let archive = SevenZipArchive::open(&temp_path).unwrap();
+        let archive = SevenZipArchive::open(temp_path).unwrap();
         let result = archive.find_first_image(true);
 
         assert!(result.is_err());
-
-        std::fs::remove_file(&temp_path).ok();
     }
 
     #[test]
     fn test_extract_entry() {
         let content = b"fake jpeg data";
-        let temp_path = std::env::temp_dir().join("test_extract.7z");
-        create_test_7z_file(&temp_path, &[("image.jpg", content)]).unwrap();
+        let temp_file = Builder::new()
+            .prefix("test_extract_")
+            .suffix(".7z")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
+        create_test_7z_file(temp_path, &[("image.jpg", content)]).unwrap();
 
-        let archive = SevenZipArchive::open(&temp_path).unwrap();
+        let archive = SevenZipArchive::open(temp_path).unwrap();
         let entry = archive.find_first_image(false).unwrap();
         let extracted = archive.extract_entry(&entry).unwrap();
 
         assert_eq!(extracted, content);
-
-        std::fs::remove_file(&temp_path).ok();
     }
 
     #[test]
     fn test_get_metadata() {
-        let temp_path = std::env::temp_dir().join("test_metadata.7z");
+        let temp_file = Builder::new()
+            .prefix("test_metadata_")
+            .suffix(".7z")
+            .tempfile()
+            .unwrap();
+        let temp_path = temp_file.path();
         create_test_7z_file(
-            &temp_path,
+            temp_path,
             &[
                 ("page1.jpg", b"image 1"),
                 ("page2.jpg", b"image 2"),
@@ -351,15 +375,13 @@ mod tests {
         )
         .unwrap();
 
-        let archive = SevenZipArchive::open(&temp_path).unwrap();
+        let archive = SevenZipArchive::open(temp_path).unwrap();
         let metadata = archive.get_metadata().unwrap();
 
         assert_eq!(metadata.total_files, 3);
         assert_eq!(metadata.image_count, 2);
         assert!(metadata.compressed_size > 0);
         assert_eq!(metadata.archive_type, ArchiveType::SevenZip);
-
-        std::fs::remove_file(&temp_path).ok();
     }
 }
 
