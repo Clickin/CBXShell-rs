@@ -1,0 +1,43 @@
+---
+title: FAQ & Troubleshooting
+description: Common CBXShell questions, fixes, and quick diagnostics.
+---
+
+## Quick answer
+
+- **Thumbnails not showing:** Restart Explorer, clear thumbnail cache, confirm CBXShell is registered.
+- **Archives not supported:** Confirm format is ZIP/RAR/7z or `.cbz/.cbr/.cb7`.
+- **WebP/AVIF issues:** Update to the latest release and check logs.
+- **Need logs:** `%TEMP%\\cbxshell_debug.log`
+
+## Thumbnails are not showing in Explorer
+
+**Short fix:** Restart Explorer and clear the thumbnail cache.
+
+1. Close Explorer (`taskkill /f /im explorer.exe`)
+2. Restart Explorer (`start explorer.exe`)
+3. If needed, clear the thumbnail cache in Windows settings.
+
+See [Installation](/installation/) for registration steps and [Logging](/logging/) for diagnostics.
+
+## Only some archive files show thumbnails
+
+**Short fix:** Confirm the archive contains supported image formats and is not encrypted.
+
+- Supported archives: `.cbz/.cbr/.cb7`, ZIP, RAR, 7z
+- Supported images: JPEG/PNG/GIF/BMP/TIFF/ICO + WebP + AVIF
+
+If a specific archive fails, check the log for decoding errors.
+
+## WebP/AVIF thumbnails are missing or slow
+
+**Short fix:** Update to the latest release and verify the archive entries are valid images.
+
+WebP/AVIF decoding depends on the `image` crate and can fail with corrupted files.
+Check `%TEMP%\\cbxshell_debug.log` for decoder errors.
+
+## How do I unregister CBXShell manually?
+
+**Short fix:** Run `regsvr32 /u cbxshell.dll` from an elevated command prompt.
+
+See [Installation](/installation/) for the full manual install and uninstall steps.
