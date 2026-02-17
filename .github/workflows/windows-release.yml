@@ -1,0 +1,122 @@
+name: Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: "Release tag (e.g. v5.1.2)"
+        required: true
+        type: string
+      prerelease:
+        description: "Mark as pre-release"
+        required: false
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build-installers:
+    name: Build NSIS installer (${{ matrix.arch }})
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            rust_target: x86_64-pc-windows-msvc
+          - arch: ARM64
+            rust_target: aarch64-pc-windows-msvc
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+
+      - name: Build release binaries
+        run: cargo build --release --target ${{ matrix.rust_target }}
+
+      - name: Create dist directory
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+
+      - name: Build NSIS installer
+        shell: pwsh
+        run: |
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" "/DARCH=${{ matrix.arch }}" "installer.nsi"
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.arch }}
+          path: dist/CBXShell-rs-Setup-*-${{ matrix.arch }}.exe
+          if-no-files-found: error
+
+  release:
+    name: Publish GitHub Release
+    needs: build-installers
+    runs-on: windows-latest
+
+    steps:
+      - name: Download installer artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: installer-*
+          merge-multiple: true
+
+      - name: Prepare bilingual release template
+        shell: pwsh
+        run: |
+          $Tag = "${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}"
+          Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_TAG=$Tag"
+          Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_NAME_EN=CBXShell-rs $Tag"
+          Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_NAME_KO=CBXShell-rs $Tag 릴리즈"
+
+          $Body = @"
+          ## 🇺🇸 Release Overview
+          - This release includes NSIS installers for **x86-64 (x64)** and **ARM64** Windows.
+          - Please choose the installer that matches your system architecture.
+
+          ## 🇰🇷 릴리즈 안내
+          - 이번 릴리즈에는 Windows용 **x86-64(x64)** 및 **ARM64** NSIS 설치 파일이 포함되어 있습니다.
+          - 사용 중인 시스템 아키텍처에 맞는 설치 파일을 선택해 주세요.
+
+          ### Installers / 설치 파일
+          - `CBXShell-rs-Setup-<version>-x64.exe`
+          - `CBXShell-rs-Setup-<version>-ARM64.exe`
+
+          ---
+          _Auto-generated commit-based release notes are attached below._
+          _아래에는 커밋 기반 자동 생성 릴리즈 노트가 이어집니다._
+          "@
+
+          $Body | Set-Content -Path release_body.md -Encoding utf8
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.RELEASE_TAG }}
+          name: |
+            ${{ env.RELEASE_NAME_EN }}
+            ${{ env.RELEASE_NAME_KO }}
+          body_path: release_body.md
+          files: dist/CBXShell-rs-Setup-*.exe
+          generate_release_notes: true
+          draft: false
+          prerelease: ${{ github.event_name == 'workflow_dispatch' && inputs.prerelease || false }}
