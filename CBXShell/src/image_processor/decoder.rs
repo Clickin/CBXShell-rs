@@ -191,6 +191,7 @@ fn try_decode_with_wic(data: &[u8]) -> Result<Option<DynamicImage>> {
     Ok(Some(DynamicImage::ImageRgba8(rgba)))
 }
 
+
 #[cfg(not(target_os = "windows"))]
 fn try_decode_with_wic(_data: &[u8]) -> Result<Option<DynamicImage>> {
     Ok(None)

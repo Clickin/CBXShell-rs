@@ -1,6 +1,6 @@
 ---
 title: 패키징
-description: NSIS 패키징 정보.
+description: 배포 채널별 패키징 정보.
 ---
 
 ## NSIS 설치 프로그램 (GitHub Releases)
@@ -13,4 +13,19 @@ description: NSIS 패키징 정보.
 - `dist\CBXShell-Setup-5.0.0.exe`
 
 요구 사항:
+- NSIS 3.x 이상
+
+## Chocolatey 패키지
+
+NSIS 설치 프로그램을 포함한 Chocolatey 패키지를 생성합니다:
+
+```powershell
+.\build_chocolatey.ps1 -BuildInstallers
+```
+
+출력:
+- `dist\cbxshell-rs.<version>.nupkg`
+
+요구 사항:
+- Chocolatey CLI (`choco`)
 - NSIS 3.x 이상

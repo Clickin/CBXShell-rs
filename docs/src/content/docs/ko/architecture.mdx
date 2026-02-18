@@ -3,6 +3,12 @@ title: 아키텍처
 description: 핵심 COM 및 아카이브 처리 설계.
 ---
 
+## 빠른 요약
+
+- **핵심 API:** `IThumbnailProvider`, `IInitializeWithStream`, `IQueryInfo`
+- **아카이브 계층:** ZIP/RAR/7z 어댑터
+- **이미지 파이프라인:** `image` + `fast_image_resize`, Explorer용 HBITMAP 출력
+
 CBXShell은 최신 Windows 셸 확장 인터페이스와 ZIP/RAR/7z를 위한
 트레이트 기반 아카이브 계층을 구현합니다.
 
