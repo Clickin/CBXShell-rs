@@ -3,6 +3,7 @@
 ;
 ; Build with: makensis.exe /DARCH=x64 installer.nsi
 ;         or: makensis.exe /DARCH=ARM64 installer.nsi
+; Optional:   /DBUILD_PROFILE=Debug (default: Release)
 
 !include "MUI2.nsh"
 !include "x64.nsh"
@@ -12,6 +13,20 @@
 ; Architecture Configuration
 ; Must be passed via command line: /DARCH=x64 or /DARCH=ARM64
 
+!ifndef BUILD_PROFILE
+  !define BUILD_PROFILE "Release"
+!endif
+
+!if "${BUILD_PROFILE}" == "Release"
+  !define PROFILE_DIR "release"
+  !define PROFILE_TAG ""
+!else if "${BUILD_PROFILE}" == "Debug"
+  !define PROFILE_DIR "debug"
+  !define PROFILE_TAG "-debug"
+!else
+  !error "Invalid BUILD_PROFILE value! Must be Release or Debug"
+!endif
+
 !ifndef ARCH
   !error "ARCH must be defined! Use /DARCH=x64 or /DARCH=ARM64"
 !endif
@@ -19,12 +34,12 @@
 !if "${ARCH}" == "x64"
   !define ARCH_NAME "x64"
   !define ARCH_BITS "64-bit"
-  !define BUILD_DIR "target\x86_64-pc-windows-msvc\release"
+  !define BUILD_DIR "target\x86_64-pc-windows-msvc\${PROFILE_DIR}"
   !define PROGRAMFILES_DIR "$PROGRAMFILES64"
 !else if "${ARCH}" == "ARM64"
   !define ARCH_NAME "ARM64"
   !define ARCH_BITS "ARM64 (64-bit)"
-  !define BUILD_DIR "target\aarch64-pc-windows-msvc\release"
+  !define BUILD_DIR "target\aarch64-pc-windows-msvc\${PROFILE_DIR}"
   !define PROGRAMFILES_DIR "$PROGRAMFILES64"
 !else
   !error "Invalid ARCH value! Must be x64 or ARM64"
@@ -44,7 +59,11 @@
 !define CLSID "{9E6ECB90-5A61-42BD-B851-D3297D9C7F39}"
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION} (${ARCH_BITS})"
-OutFile "dist\CBXShell-rs-Setup-${PRODUCT_VERSION}-${ARCH_NAME}.exe"
+!ifdef SNAPSHOT_TIMESTAMP
+  OutFile "dist\CBXShell-rs-Setup-${PRODUCT_VERSION}-snapshot-${SNAPSHOT_TIMESTAMP}-${ARCH_NAME}${PROFILE_TAG}.exe"
+!else
+  OutFile "dist\CBXShell-rs-Setup-${PRODUCT_VERSION}-${ARCH_NAME}${PROFILE_TAG}.exe"
+!endif
 InstallDir "${PROGRAMFILES_DIR}\CBXShell"
 InstallDirRegKey HKLM "${PRODUCT_UNINST_KEY}" "InstallLocation"
 ShowInstDetails show
@@ -65,8 +84,8 @@ VIAddVersionKey "ProductVersion" "${PRODUCT_VERSION}"
 ; Modern UI Configuration
 
 !define MUI_ABORTWARNING
-!define MUI_ICON "Assets\cbx_icon.ico"
-!define MUI_UNICON "Assets\cbx_icon.ico"
+!define MUI_ICON "${NSISDIR}\Contrib\Graphics\Icons\modern-install.ico"
+!define MUI_UNICON "${NSISDIR}\Contrib\Graphics\Icons\modern-uninstall.ico"
 !define MUI_HEADERIMAGE
 !define MUI_HEADERIMAGE_BITMAP "${NSISDIR}\Contrib\Graphics\Header\nsis3-metro.bmp"
 !define MUI_WELCOMEFINISHPAGE_BITMAP "${NSISDIR}\Contrib\Graphics\Wizard\nsis3-metro.bmp"
@@ -192,7 +211,6 @@ Section "CBXShell (Required)" SecCore
   ; Install documentation
   File "README.md"
   File "LICENSE.txt"
-  File "CLAUDE.md"
 SectionEnd
 
 Section "CBXManager (Configuration Tool)" SecManager
@@ -291,7 +309,6 @@ Section "Uninstall"
   Delete "$INSTDIR\CBXManager.exe"
   Delete "$INSTDIR\README.md"
   Delete "$INSTDIR\LICENSE.txt"
-  Delete "$INSTDIR\CLAUDE.md"
   Delete "$INSTDIR\Uninstall.exe"
 
   ; Remove installation directory

@@ -68,6 +68,23 @@ $env:PROCESSOR_ARCHITECTURE
 - Windows 10 or later (64-bit)
 - For Windows on ARM: Windows 11 or later
 
+### AVIF Support Policy (v5.1.2)
+
+CBXShell uses the Windows Imaging Component (WIC) path as the supported AVIF decode path.
+
+- **Supported path**: WIC AVIF decoding (recommended for production use)
+- **Required Windows codecs**:
+  - [HEIF Image Extensions](https://apps.microsoft.com/detail/9PMMSR1CGPWG)
+  - [AV1 Video Extension](https://apps.microsoft.com/detail/9MVZQVXJBQ9V)
+- **Enterprise/offline deployments**: If Microsoft Store is blocked, IT should provision the same extension packages through managed/offline deployment.
+
+CBXShell still contains a software fallback path for compatibility, but AVIF support and issue triage are based on the WIC path first.
+
+**AVIF troubleshooting quick check:**
+1. Install/update both extensions listed above
+2. Restart Explorer (or run `dev_shell_extension.ps1` register flow)
+3. Recreate thumbnail and confirm in log (`$env:TEMP\cbxshell_debug.log`) that `WIC decode path used successfully` appears
+
 ### Option 2: Manual Installation (Advanced Users)
 
 For development or custom deployment:
@@ -85,6 +102,24 @@ regsvr32 cbxshell.dll
 # Unregister
 regsvr32 /u cbxshell.dll
 ```
+
+### Development Feedback Loop (No Installer)
+
+For faster iteration during shell-extension development, use the project-local build output directly:
+
+```powershell
+# Register local development DLL + clear thumbcache + restart Explorer
+.\dev_shell_extension.ps1 -Action register
+
+# Unregister local development DLL + clear thumbcache + restart Explorer
+.\dev_shell_extension.ps1 -Action unregister
+```
+
+The script always targets:
+
+`target\x86_64-pc-windows-msvc\release\cbxshell.dll`
+
+Run from an elevated PowerShell session.
 
 ### Restart Windows Explorer
 

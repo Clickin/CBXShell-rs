@@ -5,6 +5,7 @@ use std::fs::File;
 use std::hash::BuildHasher;
 use std::io::{Read, Write as IoWrite};
 use std::path::{Path, PathBuf};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use unrar::Archive as UnrarArchive;
 
 use super::utils::{find_first_image, is_image_file, MAX_ENTRY_SIZE};
@@ -228,6 +229,40 @@ pub struct RarArchiveFromMemory {
     temp_path: PathBuf,
 }
 
+const RAR_TEMP_PREFIX: &str = "cbxshell_rar_stream_";
+
+fn cleanup_stale_rar_temp_files(max_age: Duration) {
+    let temp_dir = std::env::temp_dir();
+    let now = SystemTime::now();
+
+    let Ok(entries) = std::fs::read_dir(&temp_dir) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+            continue;
+        };
+
+        if !name.starts_with(RAR_TEMP_PREFIX) || !name.ends_with(".tmp") {
+            continue;
+        }
+
+        let old_enough = entry
+            .metadata()
+            .ok()
+            .and_then(|m| m.modified().ok())
+            .and_then(|modified| now.duration_since(modified).ok())
+            .map(|age| age >= max_age)
+            .unwrap_or(false);
+
+        if old_enough {
+            let _ = std::fs::remove_file(path);
+        }
+    }
+}
+
 impl RarArchiveFromMemory {
     /// Create a RAR archive from a streaming reader (OPTIMIZED)
     ///
@@ -250,16 +285,19 @@ impl RarArchiveFromMemory {
             ">>>>> RarArchiveFromMemory::new_from_stream STARTING <<<<<",
         );
 
+        cleanup_stale_rar_temp_files(Duration::from_secs(300));
+
         // Create temporary file with unique name
         let temp_dir = std::env::temp_dir();
-        let timestamp = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis();
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
         let random: u32 = std::collections::hash_map::RandomState::new().hash_one(timestamp) as u32;
         let thread_id = std::thread::current().id();
         let temp_filename = format!(
-            "cbxshell_rar_stream_{}_{:?}_{}_{:08x}.tmp",
+            "{}{}_{:?}_{}_{:08x}.tmp",
+            RAR_TEMP_PREFIX,
             std::process::id(),
             thread_id,
             timestamp,
@@ -365,12 +403,27 @@ impl RarArchiveFromMemory {
 
 impl Drop for RarArchiveFromMemory {
     fn drop(&mut self) {
-        // Clean up temporary file
         if self.temp_path.exists() {
-            if let Err(e) = std::fs::remove_file(&self.temp_path) {
+            let mut last_error = None;
+
+            for _ in 0..5 {
+                match std::fs::remove_file(&self.temp_path) {
+                    Ok(_) => {
+                        tracing::debug!("Cleaned up temp RAR file: {:?}", self.temp_path);
+                        return;
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                        return;
+                    }
+                    Err(e) => {
+                        last_error = Some(e);
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                }
+            }
+
+            if let Some(e) = last_error {
                 tracing::warn!("Failed to remove temp RAR file {:?}: {}", self.temp_path, e);
-            } else {
-                tracing::debug!("Cleaned up temp RAR file: {:?}", self.temp_path);
             }
         }
     }

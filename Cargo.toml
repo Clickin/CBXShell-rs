@@ -38,7 +38,7 @@ unrar = "0.5"
 sevenz-rust = "0.5"
 
 # Image processing
-image = { version = "0.25", default-features = false, features = ["webp", "jpeg", "png", "gif", "bmp", "tiff", "ico"] }
+image = { version = "0.25", default-features = false, features = ["avif", "webp", "jpeg", "png", "gif", "bmp", "tiff", "ico"] }
 fast_image_resize = "4.0"
 
 # Utilities

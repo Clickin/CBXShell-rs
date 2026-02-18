@@ -379,7 +379,10 @@ impl CBXManagerApp {
     }
 
     fn on_about(&self) {
-        // No-op for now to match existing behavior
+        utils::show_success(
+            "CBXShell Manager",
+            "CBXShell AVIF policy (v5.1.2)\n\nSupported AVIF path:\n- Windows WIC codec pipeline\n\nRequired codecs:\n- HEIF Image Extensions\n- AV1 Video Extension\n\nIf AVIF thumbnails fail, install/update both codecs and restart Explorer.\n\nNote: Software fallback may exist for compatibility, but support triage is based on the WIC path first.",
+        );
     }
 
     fn exit(&self) {

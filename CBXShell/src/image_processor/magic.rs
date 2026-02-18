@@ -156,37 +156,90 @@ pub fn detect_image_format(data: &[u8]) -> Result<ImageFormat> {
         return Ok(ImageFormat::WebP);
     }
 
-    // AVIF: Check for 'ftyp' box with 'avif' brand
-    // AVIF files are ISO Base Media File Format (similar to MP4)
-    // Structure: [size:4][type:4='ftyp'][brand:4='avif']...
-    // We need at least 12 bytes to check
-    if data.len() >= 12 {
-        // Check for ftyp box (can start at offset 4 or 8 depending on implementation)
-        for offset in [4, 8, 0] {
-            if offset + 12 <= data.len() {
-                // Check for 'ftyp' box type
-                if data[offset..offset + 4] == *b"ftyp" {
-                    // Check for 'avif' brand (can be in different positions)
-                    if data[offset + 4..offset + 8] == *b"avif" {
-                        return Ok(ImageFormat::Avif);
-                    }
-                    // Some AVIF files use 'avis' for sequence
-                    if data[offset + 4..offset + 8] == *b"avis" {
-                        return Ok(ImageFormat::Avif);
-                    }
-                }
-            }
+    if data.len() >= 12 && &data[4..8] == b"ftyp" {
+        let major_brand = &data[8..12];
+        if major_brand == b"avif" || major_brand == b"avis" {
+            return Ok(ImageFormat::Avif);
         }
+    }
 
-        // Alternative AVIF detection: search for 'ftypavif' anywhere in first 32 bytes
-        if data.len() >= 32 {
-            for i in 0..=data.len().saturating_sub(8) {
-                if i >= 32 {
+    if data.len() >= 16 {
+        let mut cursor = 0usize;
+        let parse_limit = data.len().min(4096);
+
+        while cursor + 8 <= parse_limit {
+            let size = u32::from_be_bytes([
+                data[cursor],
+                data[cursor + 1],
+                data[cursor + 2],
+                data[cursor + 3],
+            ]) as usize;
+
+            let box_type = &data[cursor + 4..cursor + 8];
+            let (header_size, box_end) = if size == 1 {
+                if cursor + 16 > parse_limit {
                     break;
                 }
-                if &data[i..i + 8] == b"ftypavif" {
+
+                let large_size = u64::from_be_bytes([
+                    data[cursor + 8],
+                    data[cursor + 9],
+                    data[cursor + 10],
+                    data[cursor + 11],
+                    data[cursor + 12],
+                    data[cursor + 13],
+                    data[cursor + 14],
+                    data[cursor + 15],
+                ]) as usize;
+                if large_size < 16 {
+                    break;
+                }
+                let end = cursor.saturating_add(large_size);
+                if end > parse_limit {
+                    break;
+                }
+                (16usize, end)
+            } else {
+                if size < 8 {
+                    break;
+                }
+                let end = cursor.saturating_add(size);
+                if end > parse_limit {
+                    break;
+                }
+                (8usize, end)
+            };
+
+            if box_type == b"ftyp" {
+                if cursor + header_size + 4 > box_end {
+                    break;
+                }
+
+                let major_brand = &data[cursor + header_size..cursor + header_size + 4];
+                if major_brand == b"avif" || major_brand == b"avis" {
                     return Ok(ImageFormat::Avif);
                 }
+
+                if cursor + header_size + 8 <= box_end {
+                    let mut brand_offset = cursor + header_size + 8;
+                    while brand_offset + 4 <= box_end {
+                        let brand = &data[brand_offset..brand_offset + 4];
+                        if brand == b"avif" || brand == b"avis" {
+                            return Ok(ImageFormat::Avif);
+                        }
+                        brand_offset += 4;
+                    }
+                }
+                break;
+            }
+
+            cursor = box_end;
+        }
+
+        let scan_limit = parse_limit.min(64);
+        for i in 0..=scan_limit.saturating_sub(8) {
+            if &data[i..i + 8] == b"ftypavif" || &data[i..i + 8] == b"ftypavis" {
+                return Ok(ImageFormat::Avif);
             }
         }
     }

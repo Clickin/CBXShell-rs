@@ -7,6 +7,7 @@
 //! This keeps compatibility while enabling newer Windows codec capabilities
 //! (e.g., AVIF via installed system codec) without bundling large codec libraries.
 
+use crate::utils::debug_log::debug_log;
 use crate::utils::error::CbxError;
 use image::{DynamicImage, ImageBuffer, ImageReader, RgbaImage};
 use std::io::Cursor;
@@ -36,11 +37,23 @@ pub fn decode_image(data: &[u8]) -> Result<DynamicImage> {
         return Err(CbxError::Image("Empty image data".to_string()));
     }
 
+    debug_log(&format!(
+        "WIC decode attempt started for {} bytes",
+        data.len()
+    ));
+
     // Fast path: try Windows WIC decoder first.
     // WIC can use OS-installed codecs and may leverage platform-specific optimizations.
     if let Some(img) = try_decode_with_wic(data)? {
+        debug_log(&format!(
+            "WIC decode path used successfully: {}x{}",
+            img.width(),
+            img.height()
+        ));
         return Ok(img);
     }
+
+    debug_log("WIC decode path unavailable, falling back to image crate");
 
     // Fallback path: decode via Rust image crate for broad compatibility.
     decode_with_image_crate(data)
@@ -74,6 +87,10 @@ fn try_decode_with_wic(data: &[u8]) -> Result<Option<DynamicImage>> {
                 // Some callers (including tests) may run on threads without COM initialization.
                 // Treat WIC setup failures as non-fatal so decode_image can still use image-crate fallback.
                 tracing::debug!("WIC factory creation failed, fallback to image crate: {e}");
+                debug_log(&format!(
+                    "WIC factory creation failed, fallback to image crate: {}",
+                    e
+                ));
                 return Ok(None);
             }
         };
@@ -98,6 +115,10 @@ fn try_decode_with_wic(data: &[u8]) -> Result<Option<DynamicImage>> {
         Ok(decoder) => decoder,
         Err(e) => {
             tracing::debug!("WIC decoder unavailable for image, fallback to image crate: {e}");
+            debug_log(&format!(
+                "WIC decoder unavailable for image, fallback to image crate: {}",
+                e
+            ));
             return Ok(None);
         }
     };
@@ -106,6 +127,10 @@ fn try_decode_with_wic(data: &[u8]) -> Result<Option<DynamicImage>> {
         Ok(frame) => frame,
         Err(e) => {
             tracing::debug!("WIC frame decode failed, fallback to image crate: {e}");
+            debug_log(&format!(
+                "WIC frame decode failed, fallback to image crate: {}",
+                e
+            ));
             return Ok(None);
         }
     };
@@ -161,6 +186,7 @@ fn try_decode_with_wic(data: &[u8]) -> Result<Option<DynamicImage>> {
         CbxError::Image("WIC decoded data had unexpected pixel buffer size".to_string())
     })?;
 
+    debug_log(&format!("WIC decode succeeded: {}x{}", width, height));
     tracing::debug!("Decoded image with WIC: {}x{}", width, height);
     Ok(Some(DynamicImage::ImageRgba8(rgba)))
 }

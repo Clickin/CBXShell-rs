@@ -1,0 +1,17 @@
+{
+  "ref": "refs/tags/v5.1.2",
+  "ref_type": "tag",
+  "before": "0000000000000000000000000000000000000000",
+  "after": "1111111111111111111111111111111111111111",
+  "repository": {
+    "full_name": "Clickin/CBXShell-rs",
+    "default_branch": "master"
+  },
+  "pusher": {
+    "name": "local-act"
+  },
+  "head_commit": {
+    "id": "1111111111111111111111111111111111111111",
+    "message": "local act tag push simulation"
+  }
+}

@@ -44,8 +44,38 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Install NSIS
-        run: choco install nsis -y --no-progress
+      - name: Setup NSIS
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $candidatePaths = @(
+            "${env:ProgramFiles(x86)}\NSIS\makensis.exe",
+            "${env:ProgramFiles}\NSIS\makensis.exe"
+          )
+
+          $makensis = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+
+          if (-not $makensis) {
+            $version = "3.10"
+            $zipUrl = "https://downloads.sourceforge.net/project/nsis/NSIS%203/$version/nsis-$version.zip"
+            $zipPath = Join-Path $env:RUNNER_TEMP "nsis-$version.zip"
+            $extractDir = Join-Path $env:RUNNER_TEMP "nsis-$version"
+
+            Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath
+            Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+
+            $found = Get-ChildItem -Path $extractDir -Recurse -Filter "makensis.exe" | Select-Object -First 1
+            if ($found) {
+              $makensis = $found.FullName
+            }
+          }
+
+          if (-not $makensis -or -not (Test-Path -LiteralPath $makensis)) {
+            throw "makensis.exe not found after NSIS setup"
+          }
+
+          "NSIS_EXE=$makensis" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build release binaries
         run: cargo build --release --target ${{ matrix.rust_target }}
@@ -58,17 +88,27 @@ jobs:
       - name: Build NSIS installer
         shell: pwsh
         run: |
-          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" "/DARCH=${{ matrix.arch }}" "installer.nsi"
+          & "$env:NSIS_EXE" "/DARCH=${{ matrix.arch }}" "installer.nsi"
 
       - name: Upload installer artifact
+        if: ${{ github.actor != 'nektos/act' }}
         uses: actions/upload-artifact@v4
         with:
           name: installer-${{ matrix.arch }}
           path: dist/CBXShell-rs-Setup-*-${{ matrix.arch }}.exe
           if-no-files-found: error
 
+      - name: Preview installer output (act)
+        if: ${{ github.actor == 'nektos/act' }}
+        shell: pwsh
+        run: |
+          Get-ChildItem -Path "dist/CBXShell-rs-Setup-*-${{ matrix.arch }}.exe" |
+            Select-Object FullName, Length |
+            Format-Table -AutoSize
+
   release:
     name: Publish GitHub Release
+    if: ${{ github.actor != 'nektos/act' }}
     needs: build-installers
     runs-on: windows-latest
 

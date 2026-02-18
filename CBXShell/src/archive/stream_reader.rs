@@ -32,6 +32,11 @@ pub struct IStreamReader {
 impl IStreamReader {
     /// Create a new IStreamReader from an IStream
     pub fn new(stream: IStream) -> Self {
+        unsafe {
+            let mut pos = 0u64;
+            let _ = stream.Seek(0, STREAM_SEEK_SET, Some(&mut pos));
+        }
+
         Self {
             stream,
             position: 0,
