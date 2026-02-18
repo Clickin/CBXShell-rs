@@ -60,7 +60,6 @@ fn decode_with_image_crate(data: &[u8]) -> Result<DynamicImage> {
 
 #[cfg(target_os = "windows")]
 fn try_decode_with_wic(data: &[u8]) -> Result<Option<DynamicImage>> {
-    use windows::core::Interface;
     use windows::Win32::Graphics::Imaging::{
         CLSID_WICImagingFactory, GUID_WICPixelFormat32bppRGBA, IWICBitmapDecoder,
         IWICFormatConverter, IWICImagingFactory, WICBitmapDitherTypeNone,
@@ -68,17 +67,16 @@ fn try_decode_with_wic(data: &[u8]) -> Result<Option<DynamicImage>> {
     };
     use windows::Win32::System::Com::{CoCreateInstance, CLSCTX_INPROC_SERVER};
 
-    let factory: IWICImagingFactory = match unsafe {
-        CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER)
-    } {
-        Ok(factory) => factory,
-        Err(e) => {
-            // Some callers (including tests) may run on threads without COM initialization.
-            // Treat WIC setup failures as non-fatal so decode_image can still use image-crate fallback.
-            tracing::debug!("WIC factory creation failed, fallback to image crate: {e}");
-            return Ok(None);
-        }
-    };
+    let factory: IWICImagingFactory =
+        match unsafe { CoCreateInstance(&CLSID_WICImagingFactory, None, CLSCTX_INPROC_SERVER) } {
+            Ok(factory) => factory,
+            Err(e) => {
+                // Some callers (including tests) may run on threads without COM initialization.
+                // Treat WIC setup failures as non-fatal so decode_image can still use image-crate fallback.
+                tracing::debug!("WIC factory creation failed, fallback to image crate: {e}");
+                return Ok(None);
+            }
+        };
 
     let stream = unsafe {
         factory
@@ -90,7 +88,7 @@ fn try_decode_with_wic(data: &[u8]) -> Result<Option<DynamicImage>> {
     // Data lifetime is guaranteed for the duration of this function.
     unsafe {
         stream
-            .InitializeFromMemory(data.as_ptr() as *mut u8, data.len() as u32)
+            .InitializeFromMemory(data)
             .map_err(|e| CbxError::Image(format!("WIC stream initialization failed: {}", e)))?;
     }
 
@@ -155,7 +153,7 @@ fn try_decode_with_wic(data: &[u8]) -> Result<Option<DynamicImage>> {
     let mut pixels = vec![0u8; buffer_size as usize];
     unsafe {
         converter
-            .CopyPixels(std::ptr::null(), stride, buffer_size, pixels.as_mut_ptr())
+            .CopyPixels(std::ptr::null(), stride, pixels.as_mut_slice())
             .map_err(|e| CbxError::Image(format!("WIC pixel copy failed: {}", e)))?;
     }
 
