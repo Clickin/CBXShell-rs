@@ -1,25 +1,25 @@
+use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicU32;
 use std::sync::Mutex;
 ///! CBXShell main COM object implementation
 ///!
-///! Migrated to IThumbnailProvider + IInitializeWithStream (modern Windows API)
 use windows::{
     core::*, Win32::Foundation::*, Win32::Graphics::Gdi::HBITMAP, Win32::System::Com::*,
     Win32::UI::Shell::PropertiesSystem::*, Win32::UI::Shell::*,
 };
 
 /// CBXShell COM object
-/// Implements: IThumbnailProvider, IInitializeWithStream, IQueryInfo
-///
-/// CRITICAL: Modern thumbnail API (IThumbnailProvider) replaces legacy IExtractImage
-/// - IThumbnailProvider: Modern thumbnail extraction (Vista+)
-/// - IInitializeWithStream: Stream-based initialization (replaces IPersistFile)
-/// - IQueryInfo: Tooltips (unchanged)
-#[implement(IThumbnailProvider, IInitializeWithStream, IQueryInfo)]
+#[implement(
+    IThumbnailProvider,
+    IInitializeWithStream,
+    IInitializeWithFile,
+    IQueryInfo
+)]
 pub struct CBXShell {
     #[allow(dead_code)] // Used by COM infrastructure through #[implement] macro
     ref_count: AtomicU32,
     stream: Mutex<Option<IStream>>,
+    file_path: Mutex<Option<PathBuf>>,
 }
 
 impl CBXShell {
@@ -31,6 +31,7 @@ impl CBXShell {
         let cbxshell = CBXShell {
             ref_count: AtomicU32::new(1),
             stream: Mutex::new(None),
+            file_path: Mutex::new(None),
         };
 
         crate::add_dll_ref();
@@ -41,6 +42,17 @@ impl CBXShell {
     /// Get the stored IStream
     fn get_stream(&self) -> Option<IStream> {
         self.stream.lock().unwrap().clone()
+    }
+
+    fn get_file_path(&self) -> Option<PathBuf> {
+        self.file_path.lock().unwrap().clone()
+    }
+
+    fn is_rar_archive_path(path: &Path) -> bool {
+        path.extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| ext.eq_ignore_ascii_case("rar") || ext.eq_ignore_ascii_case("cbr"))
+            .unwrap_or(false)
     }
 
     /// Extract thumbnail from archive (internal implementation)
@@ -62,37 +74,53 @@ impl CBXShell {
     /// * `Ok(HBITMAP)` - Successfully created thumbnail
     /// * `Err(CbxError)` - Failed to extract or create thumbnail
     fn extract_thumbnail_internal(&self, cx: u32) -> crate::utils::error::Result<HBITMAP> {
-        use crate::archive::{open_archive_from_stream, should_sort_images, IStreamReader};
+        use crate::archive::{
+            open_archive, open_archive_from_stream, should_sort_images, IStreamReader,
+        };
         use crate::image_processor::thumbnail::create_thumbnail_with_size;
         use crate::utils::error::CbxError;
 
         crate::utils::debug_log::debug_log(
-            ">>>>> extract_thumbnail_internal STARTING (OPTIMIZED STREAMING) <<<<<",
+            ">>>>> extract_thumbnail_internal STARTING (SOURCE-AWARE) <<<<<",
         );
         crate::utils::debug_log::debug_log(&format!("Requested thumbnail size: {}x{}", cx, cx));
 
-        // Step 1: Get IStream from IInitializeWithStream
-        let stream = self.get_stream().ok_or_else(|| {
-            crate::utils::debug_log::debug_log(
-                "ERROR: No IStream set in extract_thumbnail_internal",
-            );
-            CbxError::Archive("No stream initialized".to_string())
-        })?;
+        let file_path = self.get_file_path();
+        let stream = self.get_stream();
 
-        tracing::info!("Extracting thumbnail from IStream (streaming mode)");
-        crate::utils::debug_log::debug_log("Step 1: IStream retrieved successfully");
-
-        // Step 2: Create streaming reader (NO MEMORY COPY!)
-        crate::utils::debug_log::debug_log("Step 2: Creating streaming reader (OPTIMIZED)...");
-        let reader = IStreamReader::new(stream);
-        tracing::debug!("IStreamReader created for direct streaming");
-        crate::utils::debug_log::debug_log("Step 2: IStreamReader created - ready for streaming");
-
-        // Step 3: Open archive from stream (OPTIMIZED!)
-        crate::utils::debug_log::debug_log("Step 3: Opening archive from stream (NO FULL LOAD)...");
-        let archive = open_archive_from_stream(reader)?;
-        tracing::debug!("Archive opened successfully from stream");
-        crate::utils::debug_log::debug_log("Step 3: Archive opened successfully in streaming mode");
+        let archive = match (file_path.as_deref(), stream) {
+            (Some(path), _) if Self::is_rar_archive_path(path) => {
+                crate::utils::debug_log::debug_log(
+                    "Step 1: Using direct path-based RAR open (temp file bypass)",
+                );
+                tracing::info!("Opening RAR directly from file path: {:?}", path);
+                open_archive(path)?
+            }
+            (_, Some(stream)) => {
+                crate::utils::debug_log::debug_log(
+                    "Step 1: Using IStream-based archive open (optimized streaming)",
+                );
+                let reader = IStreamReader::new(stream);
+                tracing::debug!("IStreamReader created for direct streaming");
+                open_archive_from_stream(reader)?
+            }
+            (Some(path), None) => {
+                crate::utils::debug_log::debug_log(
+                    "Step 1: Stream unavailable, falling back to direct path open",
+                );
+                tracing::info!("Opening archive from file path fallback: {:?}", path);
+                open_archive(path)?
+            }
+            (None, None) => {
+                crate::utils::debug_log::debug_log(
+                    "ERROR: No stream or file path set in extract_thumbnail_internal",
+                );
+                return Err(CbxError::Archive(
+                    "No stream or file path initialized".to_string(),
+                ));
+            }
+        };
+        crate::utils::debug_log::debug_log("Step 3: Archive opened successfully");
 
         // Step 4: Read sort preference from registry
         let sort = should_sort_images();
@@ -193,10 +221,40 @@ impl IInitializeWithStream_Impl for CBXShell {
 
         crate::utils::debug_log::debug_log("IStream received and cloned successfully");
 
-        // Store the cloned stream (properly ref-counted)
         *self.stream.lock().unwrap() = Some(stream);
+        *self.file_path.lock().unwrap() = None;
 
         crate::utils::debug_log::debug_log("SUCCESS: IInitializeWithStream::Initialize completed");
+        Ok(())
+    }
+}
+
+impl IInitializeWithFile_Impl for CBXShell {
+    fn Initialize(&self, pszfilepath: &PCWSTR, _grfmode: u32) -> Result<()> {
+        crate::utils::debug_log::debug_log("===== IInitializeWithFile::Initialize CALLED =====");
+        tracing::info!("IInitializeWithFile::Initialize called");
+
+        if pszfilepath.is_null() {
+            crate::utils::debug_log::debug_log("ERROR: File path pointer is null");
+            return Err(Error::from(E_INVALIDARG));
+        }
+
+        let path_string = unsafe { pszfilepath.to_string()? };
+        if path_string.is_empty() {
+            crate::utils::debug_log::debug_log("ERROR: File path is empty");
+            return Err(Error::from(E_INVALIDARG));
+        }
+
+        let path = PathBuf::from(path_string);
+        crate::utils::debug_log::debug_log(&format!(
+            "IInitializeWithFile received path: {:?}",
+            path
+        ));
+
+        *self.file_path.lock().unwrap() = Some(path);
+        *self.stream.lock().unwrap() = None;
+
+        crate::utils::debug_log::debug_log("SUCCESS: IInitializeWithFile::Initialize completed");
         Ok(())
     }
 }
