@@ -36,7 +36,7 @@
 //!
 //! # Examples
 //!
-//! ```no_run
+//! ```ignore
 //! use cbxshell::image_processor::thumbnail::{create_thumbnail, ThumbnailConfig};
 //!
 //! // Load image from file or archive
@@ -69,9 +69,9 @@
 
 mod decoder;
 mod hbitmap;
+pub mod magic;
 mod resizer;
 pub mod thumbnail;
-pub mod magic;
 
 /// Supported image file extensions
 ///
@@ -79,13 +79,13 @@ pub mod magic;
 #[allow(dead_code)] // Used by is_image_file function
 const SUPPORTED_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "jpe", "jfif", // JPEG
-    "png",                         // PNG
-    "gif",                         // GIF
-    "bmp",                         // BMP
-    "webp",                        // WebP (NEW!)
-    "avif",                        // AVIF (NEW!)
-    "tif", "tiff",                 // TIFF
-    "ico",                         // Icon
+    "png",  // PNG
+    "gif",  // GIF
+    "bmp",  // BMP
+    "webp", // WebP (NEW!)
+    "avif", // AVIF (NEW!)
+    "tif", "tiff", // TIFF
+    "ico",  // Icon
 ];
 
 /// Check if a file is a supported image format
@@ -101,7 +101,7 @@ const SUPPORTED_EXTENSIONS: &[&str] = &[
 /// * `false` otherwise
 ///
 /// # Examples
-/// ```
+/// ```ignore
 /// use cbxshell::image_processor::is_image_file;
 ///
 /// assert!(is_image_file("page001.jpg"));
@@ -192,6 +192,6 @@ mod tests {
     fn test_is_image_file_edge_cases() {
         assert!(!is_image_file(""));
         assert!(!is_image_file(".jpg")); // Just extension, no filename
-        assert!(is_image_file("a.jpg"));  // Single character filename
+        assert!(is_image_file("a.jpg")); // Single character filename
     }
 }

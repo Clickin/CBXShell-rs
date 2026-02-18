@@ -4,9 +4,9 @@
 //! using the fast_image_resize crate, matching the C++ HALFTONE behavior.
 
 use crate::utils::error::CbxError;
-use image::RgbaImage;
 use fast_image_resize as fr;
 use fast_image_resize::images::Image;
+use image::RgbaImage;
 
 type Result<T> = std::result::Result<T, CbxError>;
 
@@ -40,7 +40,7 @@ impl From<ResizeFilter> for fr::FilterType {
 /// rx = (float)cx.cx / (float)pSize->cx;
 /// ry = (float)cx.cy / (float)pSize->cy;
 /// r = min(rx, ry);  // Maintain aspect ratio
-/// ```
+/// ```ignore
 ///
 /// # Arguments
 /// * `src_width` - Original image width
@@ -155,7 +155,7 @@ pub fn resize_image(
         .resize(
             &src_view,
             &mut dst_image,
-            &fr::ResizeOptions::new().resize_alg(fr::ResizeAlg::Convolution(filter.into()))
+            &fr::ResizeOptions::new().resize_alg(fr::ResizeAlg::Convolution(filter.into())),
         )
         .map_err(|e| CbxError::Image(format!("Resize operation failed: {}", e)))?;
 

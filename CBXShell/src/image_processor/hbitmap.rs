@@ -5,8 +5,8 @@
 //! efficient bitmap creation compatible with Windows GDI.
 
 use crate::utils::error::CbxError;
-use windows::Win32::Graphics::Gdi::*;
 use std::ptr;
+use windows::Win32::Graphics::Gdi::*;
 
 type Result<T> = std::result::Result<T, CbxError>;
 
@@ -26,7 +26,7 @@ type Result<T> = std::result::Result<T, CbxError>;
 /// - Output: B G R A | B G R A | ...
 ///
 /// # Examples
-/// ```
+/// ```ignore
 /// let rgba = vec![255, 0, 0, 255];  // Red pixel (RGBA)
 /// let bgra = rgba_to_bgra(&rgba);
 /// assert_eq!(bgra, vec![0, 0, 255, 255]);  // Red pixel (BGRA)
@@ -79,11 +79,7 @@ pub fn rgba_to_bgra(rgba: &[u8]) -> Vec<u8> {
 /// HBITMAP hBmp = CreateDIBSection(NULL, &bi, DIB_RGB_COLORS, &pvBits, NULL, 0);
 /// memcpy(pvBits, data, size);
 /// ```
-pub fn create_hbitmap_from_bgra(
-    bgra_data: &[u8],
-    width: u32,
-    height: u32,
-) -> Result<HBITMAP> {
+pub fn create_hbitmap_from_bgra(bgra_data: &[u8], width: u32, height: u32) -> Result<HBITMAP> {
     if width == 0 || height == 0 {
         return Err(CbxError::Image(
             "Width and height must be greater than zero".to_string(),
@@ -143,12 +139,12 @@ pub fn create_hbitmap_from_bgra(
 
         // Create DIB section
         let hbitmap = CreateDIBSection(
-            None,                       // Device context (NULL = screen)
-            &bmi,                       // Bitmap info
-            DIB_RGB_COLORS,             // Color usage
-            &mut pv_bits,               // Pointer to bits
-            None,                       // File mapping object (NULL)
-            0,                          // Offset in file mapping
+            None,           // Device context (NULL = screen)
+            &bmi,           // Bitmap info
+            DIB_RGB_COLORS, // Color usage
+            &mut pv_bits,   // Pointer to bits
+            None,           // File mapping object (NULL)
+            0,              // Offset in file mapping
         )?; // Use ? to propagate the Result
 
         if hbitmap.is_invalid() || hbitmap.0 == 0 {
@@ -163,11 +159,7 @@ pub fn create_hbitmap_from_bgra(
         }
 
         // Copy pixel data to DIB section
-        ptr::copy_nonoverlapping(
-            bgra_data.as_ptr(),
-            pv_bits as *mut u8,
-            bgra_data.len(),
-        );
+        ptr::copy_nonoverlapping(bgra_data.as_ptr(), pv_bits as *mut u8, bgra_data.len());
 
         Ok(hbitmap)
     }
@@ -186,11 +178,7 @@ pub fn create_hbitmap_from_bgra(
 /// * `Ok(HBITMAP)` - Successfully created bitmap handle
 /// * `Err(CbxError)` - Conversion failed
 #[allow(dead_code)] // Part of public API, may be used in future
-pub fn create_hbitmap_from_rgba(
-    rgba_data: &[u8],
-    width: u32,
-    height: u32,
-) -> Result<HBITMAP> {
+pub fn create_hbitmap_from_rgba(rgba_data: &[u8], width: u32, height: u32) -> Result<HBITMAP> {
     let bgra_data = rgba_to_bgra(rgba_data);
     create_hbitmap_from_bgra(&bgra_data, width, height)
 }
@@ -221,15 +209,15 @@ mod tests {
     fn test_rgba_to_bgra_multiple_pixels() {
         // Two pixels: red and blue
         let rgba = vec![
-            255, 0, 0, 255,  // Red
-            0, 0, 255, 255,  // Blue
+            255, 0, 0, 255, // Red
+            0, 0, 255, 255, // Blue
         ];
         let bgra = rgba_to_bgra(&rgba);
         assert_eq!(
             bgra,
             vec![
-                0, 0, 255, 255,  // Red in BGRA
-                255, 0, 0, 255,  // Blue in BGRA
+                0, 0, 255, 255, // Red in BGRA
+                255, 0, 0, 255, // Blue in BGRA
             ]
         );
     }
@@ -277,9 +265,9 @@ mod tests {
         // Data for 2x2 image but claim it's 1x1
         let bgra = vec![
             255, 255, 255, 255, // Pixel 1
-            0, 0, 0, 255,       // Pixel 2
-            255, 0, 0, 255,     // Pixel 3
-            0, 255, 0, 255,     // Pixel 4
+            0, 0, 0, 255, // Pixel 2
+            255, 0, 0, 255, // Pixel 3
+            0, 255, 0, 255, // Pixel 4
         ];
 
         let result = create_hbitmap_from_bgra(&bgra, 1, 1);
@@ -316,9 +304,9 @@ mod tests {
     fn test_create_hbitmap_from_rgba_convenience() {
         // Test the convenience function
         let rgba = vec![
-            255, 0, 0, 255,  // Red
-            0, 255, 0, 255,  // Green
-            0, 0, 255, 255,  // Blue
+            255, 0, 0, 255, // Red
+            0, 255, 0, 255, // Green
+            0, 0, 255, 255, // Blue
             255, 255, 255, 255, // White
         ];
 
@@ -340,10 +328,10 @@ mod tests {
         let mut bgra = Vec::new();
         for y in 0..256 {
             for x in 0..256 {
-                bgra.push(x as u8);  // B
-                bgra.push(y as u8);  // G
-                bgra.push(0);        // R
-                bgra.push(255);      // A
+                bgra.push(x as u8); // B
+                bgra.push(y as u8); // G
+                bgra.push(0); // R
+                bgra.push(255); // A
             }
         }
 

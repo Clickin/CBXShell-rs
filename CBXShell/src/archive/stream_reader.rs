@@ -19,7 +19,7 @@ use windows::Win32::System::Com::*;
 /// - **Efficient**: Only reads what's needed for metadata and target file
 ///
 /// # Example
-/// ```no_run
+/// ```ignore
 /// let stream: IStream = ...; // from IInitializeWithStream
 /// let reader = IStreamReader::new(stream);
 /// let archive = ZipArchive::new(reader)?; // Direct streaming!

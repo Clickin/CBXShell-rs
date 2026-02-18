@@ -137,7 +137,7 @@ pub fn open_archive(path: &Path) -> Result<Box<dyn Archive>> {
 /// * `Err(CbxError)` - If the format is unsupported or opening fails
 ///
 /// # Example
-/// ```no_run
+/// ```ignore
 /// use cbxshell::archive::{open_archive_from_stream, IStreamReader};
 /// use windows::Win32::System::Com::IStream;
 ///

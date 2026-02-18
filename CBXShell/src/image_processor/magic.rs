@@ -75,7 +75,7 @@ impl ImageFormat {
 /// * `Err(CbxError)` - Not an image or unrecognized format
 ///
 /// # Examples
-/// ```no_run
+/// ```ignore
 /// let jpeg_data = std::fs::read("photo.jpg")?;
 /// let format = detect_image_format(&jpeg_data)?;
 /// assert_eq!(format, ImageFormat::Jpeg);

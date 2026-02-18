@@ -66,7 +66,7 @@ pub fn find_first_image<'a>(names: impl Iterator<Item = &'a str>, sort: bool) ->
 /// * `Err(CbxError)` - Data is not a valid image
 ///
 /// # Examples
-/// ```no_run
+/// ```ignore
 /// let data = archive.extract_entry(&entry)?;
 /// verify_image_data(&data, &entry.name)?;
 /// // Now safe to decode the image

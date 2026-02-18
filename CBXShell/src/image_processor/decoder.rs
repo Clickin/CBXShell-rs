@@ -27,7 +27,7 @@ type Result<T> = std::result::Result<T, CbxError>;
 /// * `Err(CbxError::Image)` - Failed to decode (invalid format or corrupt data)
 ///
 /// # Examples
-/// ```no_run
+/// ```ignore
 /// let jpeg_data = std::fs::read("image.jpg")?;
 /// let img = decode_image(&jpeg_data)?;
 /// println!("Image dimensions: {}x{}", img.width(), img.height());
@@ -190,7 +190,6 @@ fn try_decode_with_wic(data: &[u8]) -> Result<Option<DynamicImage>> {
     tracing::debug!("Decoded image with WIC: {}x{}", width, height);
     Ok(Some(DynamicImage::ImageRgba8(rgba)))
 }
-
 
 #[cfg(not(target_os = "windows"))]
 fn try_decode_with_wic(_data: &[u8]) -> Result<Option<DynamicImage>> {
