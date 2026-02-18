@@ -8,19 +8,17 @@
 
 #![allow(non_snake_case)]
 
-use windows::{
-    core::*,
-    Win32::Foundation::*,
-};
 use std::sync::atomic::{AtomicU32, Ordering};
+use windows::{core::*, Win32::Foundation::*};
 
-pub mod com;
 mod archive;
+pub mod com;
 mod image_processor;
 pub mod registry;
 mod utils;
 
 pub use com::CBXShell;
+pub use image_processor::thumbnail::create_thumbnail_with_size;
 pub use utils::error::CbxError;
 
 /// Global reference count for COM objects
@@ -79,7 +77,9 @@ pub extern "system" fn DllMain(
             tracing::info!("CBXShell DLL loaded");
 
             // CRITICAL: File-based debug logging to diagnose Explorer integration
-            utils::debug_log::debug_log("===== DLL_PROCESS_ATTACH - CBXShell DLL loaded by Explorer =====");
+            utils::debug_log::debug_log(
+                "===== DLL_PROCESS_ATTACH - CBXShell DLL loaded by Explorer =====",
+            );
             utils::debug_log::debug_log(&format!("DLL HINSTANCE: {:?}", hinst_dll));
 
             TRUE
@@ -106,7 +106,10 @@ pub extern "system" fn DllCanUnloadNow() -> HRESULT {
         S_OK
     } else {
         tracing::debug!("DllCanUnloadNow: S_FALSE (ref count = {})", ref_count);
-        utils::debug_log::debug_log(&format!("DllCanUnloadNow: S_FALSE (ref count = {})", ref_count));
+        utils::debug_log::debug_log(&format!(
+            "DllCanUnloadNow: S_FALSE (ref count = {})",
+            ref_count
+        ));
         S_FALSE
     }
 }
@@ -177,19 +180,30 @@ pub extern "system" fn DllGetClassObject(
                         match iunknown.query(riid, ppv as *mut _) {
                             S_OK => {
                                 tracing::debug!("DllGetClassObject: S_OK");
-                                utils::debug_log::debug_log("DllGetClassObject: SUCCESS - Returning class factory");
+                                utils::debug_log::debug_log(
+                                    "DllGetClassObject: SUCCESS - Returning class factory",
+                                );
                                 S_OK
                             }
                             hr => {
-                                tracing::error!("DllGetClassObject QueryInterface failed: {:?}", hr);
-                                utils::debug_log::debug_log(&format!("ERROR: QueryInterface failed with HRESULT: {:?}", hr));
+                                tracing::error!(
+                                    "DllGetClassObject QueryInterface failed: {:?}",
+                                    hr
+                                );
+                                utils::debug_log::debug_log(&format!(
+                                    "ERROR: QueryInterface failed with HRESULT: {:?}",
+                                    hr
+                                ));
                                 hr
                             }
                         }
                     }
                     Err(e) => {
                         tracing::error!("DllGetClassObject cast to IUnknown failed: {:?}", e);
-                        utils::debug_log::debug_log(&format!("ERROR: Cast to IUnknown failed: {:?}", e));
+                        utils::debug_log::debug_log(&format!(
+                            "ERROR: Cast to IUnknown failed: {:?}",
+                            e
+                        ));
                         E_NOINTERFACE
                     }
                 }

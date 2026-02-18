@@ -1,21 +1,23 @@
 //! Integration test for WebP image decoding
 //! Verifies that WebP images can be decoded and converted to thumbnails
 
-use cbxshell::image_processor::thumbnail::create_thumbnail_with_size;
-use std::fs;
-use std::path::PathBuf;
+use cbxshell::create_thumbnail_with_size;
 
 /// Minimal valid WebP file (1x1 red pixel, lossy VP8 format)
-/// Source: Created with libwebp, verified with dwebp
-const MINIMAL_WEBP: &[u8] = include_bytes!("../test_data/minimal.webp");
+const MINIMAL_WEBP: &[u8] = &[
+    0x52, 0x49, 0x46, 0x46, 0x40, 0x00, 0x00, 0x00, 0x57, 0x45, 0x42, 0x50, 0x56, 0x50, 0x38, 0x20,
+    0x34, 0x00, 0x00, 0x00, 0xF0, 0x01, 0x00, 0x9D, 0x01, 0x2A, 0x01, 0x00, 0x01, 0x00, 0x01, 0x00,
+    0x1C, 0x25, 0xA0, 0x02, 0x74, 0xBA, 0x01, 0xF8, 0x00, 0x04, 0x4C, 0x00, 0x00, 0xFE, 0xF5, 0xB8,
+    0x7F, 0xFE, 0x9A, 0x47, 0x8D, 0x23, 0xC6, 0x91, 0xF1, 0x70, 0xFF, 0xEE, 0x81, 0x3F, 0x74, 0x09,
+    0xFB, 0xA0, 0x4F, 0xFD, 0xCD, 0xA0, 0x00, 0x00,
+];
 
 #[test]
 fn test_webp_decoding() {
-    // Test data directory
-    let test_data_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("test_data");
-
-    // If test data doesn't exist, create minimal WebP in memory
-    println!("Testing WebP decoding with minimal WebP file ({} bytes)", MINIMAL_WEBP.len());
+    println!(
+        "Testing WebP decoding with minimal WebP file ({} bytes)",
+        MINIMAL_WEBP.len()
+    );
 
     // Attempt to create thumbnail from WebP
     let result = create_thumbnail_with_size(MINIMAL_WEBP, 256, 256);
@@ -35,7 +37,11 @@ fn test_webp_decoding() {
         }
     }
 
-    assert!(result.is_ok(), "WebP decoding should succeed, but got: {:?}", result.err());
+    assert!(
+        result.is_ok(),
+        "WebP decoding should succeed, but got: {:?}",
+        result.err()
+    );
 }
 
 #[test]
@@ -45,8 +51,7 @@ fn test_image_crate_webp_support() {
 
     println!("Testing image crate WebP support directly...");
 
-    let reader = ImageReader::new(Cursor::new(MINIMAL_WEBP))
-        .with_guessed_format();
+    let reader = ImageReader::new(Cursor::new(MINIMAL_WEBP)).with_guessed_format();
 
     match reader {
         Ok(reader) => {
@@ -54,7 +59,11 @@ fn test_image_crate_webp_support() {
 
             match reader.decode() {
                 Ok(img) => {
-                    println!("SUCCESS: Decoded WebP image: {}x{}", img.width(), img.height());
+                    println!(
+                        "SUCCESS: Decoded WebP image: {}x{}",
+                        img.width(),
+                        img.height()
+                    );
                     assert!(img.width() > 0 && img.height() > 0);
                 }
                 Err(e) => {
