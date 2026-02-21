@@ -41,12 +41,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Ensure cargo on PATH for act
+        if: env.ACT == 'true'
+        shell: pwsh
+        run: |
+          $rustupCmd = Get-Command rustup -ErrorAction Stop
+          $cargoBin = Split-Path $rustupCmd.Source -Parent
+          Add-Content -Path $env:GITHUB_PATH -Value $cargoBin
+
       - name: Setup Rust toolchain
+        if: env.ACT != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
 
       - name: Cache Cargo
+        if: env.ACT != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -54,28 +64,39 @@ jobs:
             CBXShell -> CBXShell/target
 
       - name: Cargo build (release)
+        if: env.ACT != 'true'
         run: cargo build --release --target ${{ matrix.rust_target }}
 
       - name: Cargo test (host x64 only)
-        if: matrix.run_tests
+        if: matrix.run_tests && env.ACT != 'true'
         run: cargo test --target ${{ matrix.rust_target }} --workspace
 
   system-tests:
     name: Windows System Tests (x64)
     runs-on: windows-latest
     needs: validate
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.run_system_tests == true)
+    if: always() && (github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (inputs.run_system_tests == true || inputs.run_system_tests == 'true'))) && (github.actor == 'nektos/act' || needs.validate.result == 'success')
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Ensure cargo on PATH for act
+        if: env.ACT == 'true'
+        shell: pwsh
+        run: |
+          $rustupCmd = Get-Command rustup -ErrorAction Stop
+          $cargoBin = Split-Path $rustupCmd.Source -Parent
+          Add-Content -Path $env:GITHUB_PATH -Value $cargoBin
+
       - name: Setup Rust toolchain
+        if: env.ACT != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
 
       - name: Cache Cargo
+        if: env.ACT != 'true'
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
@@ -83,4 +104,10 @@ jobs:
             CBXShell -> CBXShell/target
 
       - name: Cargo test (system-dependent, serial)
-        run: cargo test --target x86_64-pc-windows-msvc --package cbxshell --features e2e-windows -- --ignored --test-threads=1
+        shell: pwsh
+        run: |
+          if ($env:ACT -eq 'true') {
+            rustup run stable cargo test --target x86_64-pc-windows-msvc --package cbxshell --features e2e-windows --lib --tests -- --ignored --test-threads=1
+          } else {
+            cargo test --target x86_64-pc-windows-msvc --package cbxshell --features e2e-windows --lib --tests -- --ignored --test-threads=1
+          }
