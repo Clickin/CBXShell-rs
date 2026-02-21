@@ -1,5 +1,4 @@
 ///! Error types for CBXShell
-
 use thiserror::Error;
 use windows::core::HRESULT;
 

@@ -3,7 +3,7 @@ members = ["CBXShell"]
 resolver = "2"
 
 [workspace.package]
-version = "5.1.1"
+version = "5.1.2"
 authors = ["CBXShell Contributors"]
 edition = "2021"
 license = "CPOL-1.02"

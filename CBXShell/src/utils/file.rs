@@ -1,15 +1,14 @@
-///! File system utility functions
-
-use std::path::Path;
-use windows::Win32::Foundation::FILETIME;
-use windows::Win32::Storage::FileSystem::{
-    GetFileTime, CreateFileW, FILE_SHARE_READ, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL,
-};
-use windows::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
-use windows::core::PCWSTR;
-use widestring::U16CString;
-use crate::utils::error::{CbxError, Result};
 use crate::archive::ArchiveType;
+use crate::utils::error::{CbxError, Result};
+///! File system utility functions
+use std::path::Path;
+use widestring::U16CString;
+use windows::core::PCWSTR;
+use windows::Win32::Foundation::FILETIME;
+use windows::Win32::Foundation::{CloseHandle, INVALID_HANDLE_VALUE};
+use windows::Win32::Storage::FileSystem::{
+    CreateFileW, GetFileTime, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, OPEN_EXISTING,
+};
 
 /// Get the last modified time of a file
 ///
@@ -43,8 +42,8 @@ pub fn get_file_modified_time(path: &Path) -> Result<FILETIME> {
     // - Error propagation via Result
     unsafe {
         // Convert path to wide string for Windows API
-        let wide_path = U16CString::from_os_str(path.as_os_str())
-            .map_err(|_| CbxError::InvalidPath)?;
+        let wide_path =
+            U16CString::from_os_str(path.as_os_str()).map_err(|_| CbxError::InvalidPath)?;
 
         // Open file handle (read-only, shared read access)
         let handle = CreateFileW(
@@ -55,7 +54,8 @@ pub fn get_file_modified_time(path: &Path) -> Result<FILETIME> {
             OPEN_EXISTING,
             FILE_ATTRIBUTE_NORMAL,
             None,
-        ).map_err(|e| CbxError::Windows(e))?;
+        )
+        .map_err(|e| CbxError::Windows(e))?;
 
         if handle == INVALID_HANDLE_VALUE {
             return Err(CbxError::Io(std::io::Error::last_os_error()));
@@ -127,7 +127,11 @@ mod tests {
 
         // Get modified time
         let result = get_file_modified_time(&file_path);
-        assert!(result.is_ok(), "Failed to get file time: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "Failed to get file time: {:?}",
+            result.err()
+        );
 
         let filetime = result.unwrap();
         // FILETIME should be non-zero for a real file
@@ -201,7 +205,10 @@ mod tests {
     fn test_detect_archive_type_unsupported() {
         let result = detect_archive_type(Path::new("test.txt"));
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), CbxError::UnsupportedFormat(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            CbxError::UnsupportedFormat(_)
+        ));
     }
 
     #[test]

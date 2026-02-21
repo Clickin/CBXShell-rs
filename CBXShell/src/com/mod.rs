@@ -1,13 +1,12 @@
-///! COM implementation for CBXShell Windows Shell Extension
-
-mod class_factory;
 mod cbxshell;
-mod persist_file;
+///! COM implementation for CBXShell Windows Shell Extension
+mod class_factory;
 mod extract_image;
+mod persist_file;
 mod query_info;
 
-pub use class_factory::ClassFactory;
 pub use cbxshell::CBXShell;
+pub use class_factory::ClassFactory;
 
 use windows::core::GUID;
 

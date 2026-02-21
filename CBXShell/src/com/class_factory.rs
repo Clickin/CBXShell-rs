@@ -1,11 +1,6 @@
-///! COM Class Factory implementation
-
-use windows::{
-    core::*,
-    Win32::Foundation::*,
-    Win32::System::Com::*,
-};
 use std::sync::atomic::AtomicU32;
+///! COM Class Factory implementation
+use windows::{core::*, Win32::Foundation::*, Win32::System::Com::*};
 
 use super::CBXShell;
 
@@ -63,18 +58,26 @@ impl IClassFactory_Impl for ClassFactory {
                     match iunknown.query(riid, ppv as *mut _) {
                         S_OK => {
                             tracing::debug!("CBXShell instance created successfully");
-                            crate::utils::debug_log::debug_log("SUCCESS: QueryInterface succeeded - CBXShell instance returned");
+                            crate::utils::debug_log::debug_log(
+                                "SUCCESS: QueryInterface succeeded - CBXShell instance returned",
+                            );
                             Ok(())
                         }
                         hr => {
-                            crate::utils::debug_log::debug_log(&format!("ERROR: QueryInterface failed with HRESULT: {:?}", hr));
+                            crate::utils::debug_log::debug_log(&format!(
+                                "ERROR: QueryInterface failed with HRESULT: {:?}",
+                                hr
+                            ));
                             Err(Error::from(hr))
                         }
                     }
                 }
                 Err(e) => {
                     tracing::error!("Failed to cast CBXShell to IUnknown: {:?}", e);
-                    crate::utils::debug_log::debug_log(&format!("ERROR: Cast to IUnknown failed: {:?}", e));
+                    crate::utils::debug_log::debug_log(&format!(
+                        "ERROR: Cast to IUnknown failed: {:?}",
+                        e
+                    ));
                     Err(Error::from(E_NOINTERFACE))
                 }
             }

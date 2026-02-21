@@ -81,7 +81,8 @@ fn create_key(hkey: HKEY, subkey: &str) -> Result<HKEY> {
             None,
             &mut result_key,
             None,
-        ).map_err(|e| CbxError::Windows(e))?;
+        )
+        .map_err(|e| CbxError::Windows(e))?;
 
         Ok(result_key)
     }
@@ -98,10 +99,7 @@ fn set_string_value(hkey: HKEY, value_name: Option<&str>, data: &str) -> Result<
     // SAFETY IMPROVEMENT: Convert u16 to bytes safely without raw pointers
     // Previously used std::slice::from_raw_parts which is unsafe
     // Now using safe iterator-based conversion with explicit endianness
-    let data_bytes: Vec<u8> = data_wide
-        .iter()
-        .flat_map(|&w| w.to_le_bytes())
-        .collect();
+    let data_bytes: Vec<u8> = data_wide.iter().flat_map(|&w| w.to_le_bytes()).collect();
 
     // UNAVOIDABLE UNSAFE: RegSetValueExW is a Windows FFI call
     // The Windows Registry API requires calling C functions which is inherently unsafe
@@ -112,7 +110,8 @@ fn set_string_value(hkey: HKEY, value_name: Option<&str>, data: &str) -> Result<
             0,
             REG_SZ,
             Some(&data_bytes),
-        ).map_err(|e| CbxError::Windows(e))?;
+        )
+        .map_err(|e| CbxError::Windows(e))?;
     }
 
     Ok(())
@@ -160,7 +159,9 @@ fn register_extension(extension: &str, clsid_str: &str) -> Result<()> {
     let ext_key = create_key(HKEY_CURRENT_USER, &base_key)?;
     set_string_value(ext_key, Some("PerceivedType"), "image")?;
     set_string_value(ext_key, Some("Content Type"), "application/x-cbz")?;
-    unsafe { RegCloseKey(ext_key).ok(); }
+    unsafe {
+        RegCloseKey(ext_key).ok();
+    }
 
     // 2. Create .ext\shellex key
     let shellex_key_path = format!("{}\\shellex", base_key);
@@ -170,15 +171,21 @@ fn register_extension(extension: &str, clsid_str: &str) -> Result<()> {
     let thumbnail_key_path = format!("{}\\shellex\\{}", base_key, IID_ITHUMBNAILPROVIDER);
     let thumbnail_key = create_key(HKEY_CURRENT_USER, &thumbnail_key_path)?;
     set_string_value(thumbnail_key, None, clsid_str)?;
-    unsafe { RegCloseKey(thumbnail_key).ok(); }
+    unsafe {
+        RegCloseKey(thumbnail_key).ok();
+    }
 
     // 4. Register IQueryInfo handler (tooltips)
     let infotip_key_path = format!("{}\\shellex\\{}", base_key, IID_IQUERYINFO);
     let infotip_key = create_key(HKEY_CURRENT_USER, &infotip_key_path)?;
     set_string_value(infotip_key, None, clsid_str)?;
-    unsafe { RegCloseKey(infotip_key).ok(); }
+    unsafe {
+        RegCloseKey(infotip_key).ok();
+    }
 
-    unsafe { RegCloseKey(shellex_key).ok(); }
+    unsafe {
+        RegCloseKey(shellex_key).ok();
+    }
 
     Ok(())
 }
@@ -216,12 +223,17 @@ pub fn register_server(dll_path: Option<&str>) -> Result<()> {
     let inproc_key = create_key(HKEY_CURRENT_USER, &inproc_key_path)?;
     set_string_value(inproc_key, None, &module_path)?;
     set_string_value(inproc_key, Some("ThreadingModel"), "Apartment")?;
-    unsafe { RegCloseKey(inproc_key).ok(); }
+    unsafe {
+        RegCloseKey(inproc_key).ok();
+    }
 
     // 3. Register ProgID (optional, for compatibility)
     let progid_key = create_key(HKEY_CURRENT_USER, "Software\\Classes\\CBXShell.CBXShell.1")?;
     set_string_value(progid_key, None, "CBXShell Class")?;
-    let progid_clsid_key = create_key(HKEY_CURRENT_USER, "Software\\Classes\\CBXShell.CBXShell.1\\CLSID")?;
+    let progid_clsid_key = create_key(
+        HKEY_CURRENT_USER,
+        "Software\\Classes\\CBXShell.CBXShell.1\\CLSID",
+    )?;
     set_string_value(progid_clsid_key, None, &clsid_str)?;
     unsafe {
         RegCloseKey(progid_clsid_key).ok();
@@ -231,10 +243,13 @@ pub fn register_server(dll_path: Option<&str>) -> Result<()> {
 
     // 4. Add to approved shell extensions (HKCU, not HKLM to avoid admin requirement)
     // Note: File extension registration is now handled by CBXManager via registry_ops
-    let approved_key_path = "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
+    let approved_key_path =
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
     let approved_key = create_key(HKEY_CURRENT_USER, approved_key_path)?;
     set_string_value(approved_key, Some(&clsid_str), "CBXShell Class")?;
-    unsafe { RegCloseKey(approved_key).ok(); }
+    unsafe {
+        RegCloseKey(approved_key).ok();
+    }
 
     tracing::info!(
         "Successfully registered CBXShell COM server (file extensions must be configured via CBXManager)"
@@ -249,11 +264,15 @@ pub fn unregister_server() -> Result<()> {
 
     // 1. Remove from approved shell extensions
     // Note: File extension cleanup is handled by CBXManager via registry_ops
-    let approved_key_path = "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
+    let approved_key_path =
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
     if let Ok(approved_key) = create_key(HKEY_CURRENT_USER, approved_key_path) {
         unsafe {
             let value_name_wide: Vec<u16> = clsid_str.encode_utf16().chain(Some(0)).collect();
-            let _ = RegDeleteValueW(approved_key, windows::core::PCWSTR(value_name_wide.as_ptr()));
+            let _ = RegDeleteValueW(
+                approved_key,
+                windows::core::PCWSTR(value_name_wide.as_ptr()),
+            );
             RegCloseKey(approved_key).ok();
         }
     }
