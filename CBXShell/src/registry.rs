@@ -11,8 +11,36 @@ use crate::utils::error::{CbxError, Result};
 use windows::core::GUID;
 use windows::Win32::System::Registry::*;
 
-/// CBXShell CLSID: {9E6ECB90-5A61-42BD-B851-D3297D9C7F39}
 pub const CLSID_CBXSHELL: GUID = GUID::from_u128(0x9E6ECB90_5A61_42BD_B851_D3297D9C7F39);
+
+fn clsid_string(clsid: GUID) -> String {
+    format!("{{{:?}}}", clsid)
+}
+
+fn register_clsid(module_path: &str, clsid: GUID, description: &str) -> Result<()> {
+    let clsid_str = clsid_string(clsid);
+    let clsid_key_path = format!("Software\\Classes\\CLSID\\{}", clsid_str);
+    let clsid_key = create_key(HKEY_CURRENT_USER, &clsid_key_path)?;
+    set_string_value(clsid_key, None, description)?;
+
+    let inproc_key_path = format!("{}\\InprocServer32", clsid_key_path);
+    let inproc_key = create_key(HKEY_CURRENT_USER, &inproc_key_path)?;
+    set_string_value(inproc_key, None, module_path)?;
+    set_string_value(inproc_key, Some("ThreadingModel"), "Apartment")?;
+    unsafe {
+        RegCloseKey(inproc_key).ok();
+        RegCloseKey(clsid_key).ok();
+    }
+
+    let approved_key_path = "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
+    let approved_key = create_key(HKEY_CURRENT_USER, approved_key_path)?;
+    set_string_value(approved_key, Some(&clsid_str), description)?;
+    unsafe {
+        RegCloseKey(approved_key).ok();
+    }
+
+    Ok(())
+}
 
 /// IThumbnailProvider interface GUID (modern thumbnail API, replaces IExtractImage)
 #[allow(dead_code)] // May be used in future for interface registration
@@ -204,30 +232,15 @@ fn unregister_extension(extension: &str) -> Result<()> {
 /// * `dll_path` - Optional path to the DLL. If None, will attempt to get path from DllMain module handle.
 ///                When calling from an external executable (like CBXManager), you must provide this.
 pub fn register_server(dll_path: Option<&str>) -> Result<()> {
-    // Format CLSID with hyphens as Windows expects: {XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX}
-    let clsid_str = format!("{{{:?}}}", CLSID_CBXSHELL);
-
     // Get DLL path: use provided path or get from module handle
     let module_path = match dll_path {
         Some(path) => path.to_string(),
         None => get_module_path()?,
     };
 
-    // 1. Register CLSID
-    let clsid_key_path = format!("Software\\Classes\\CLSID\\{}", clsid_str);
-    let clsid_key = create_key(HKEY_CURRENT_USER, &clsid_key_path)?;
-    set_string_value(clsid_key, None, "CBXShell Class")?;
+    register_clsid(&module_path, CLSID_CBXSHELL, "CBXShell Class")?;
 
-    // 2. Register InprocServer32
-    let inproc_key_path = format!("{}\\InprocServer32", clsid_key_path);
-    let inproc_key = create_key(HKEY_CURRENT_USER, &inproc_key_path)?;
-    set_string_value(inproc_key, None, &module_path)?;
-    set_string_value(inproc_key, Some("ThreadingModel"), "Apartment")?;
-    unsafe {
-        RegCloseKey(inproc_key).ok();
-    }
-
-    // 3. Register ProgID (optional, for compatibility)
+    let clsid_str = clsid_string(CLSID_CBXSHELL);
     let progid_key = create_key(HKEY_CURRENT_USER, "Software\\Classes\\CBXShell.CBXShell.1")?;
     set_string_value(progid_key, None, "CBXShell Class")?;
     let progid_clsid_key = create_key(
@@ -238,17 +251,6 @@ pub fn register_server(dll_path: Option<&str>) -> Result<()> {
     unsafe {
         RegCloseKey(progid_clsid_key).ok();
         RegCloseKey(progid_key).ok();
-        RegCloseKey(clsid_key).ok();
-    }
-
-    // 4. Add to approved shell extensions (HKCU, not HKLM to avoid admin requirement)
-    // Note: File extension registration is now handled by CBXManager via registry_ops
-    let approved_key_path =
-        "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
-    let approved_key = create_key(HKEY_CURRENT_USER, approved_key_path)?;
-    set_string_value(approved_key, Some(&clsid_str), "CBXShell Class")?;
-    unsafe {
-        RegCloseKey(approved_key).ok();
     }
 
     tracing::info!(
@@ -260,26 +262,33 @@ pub fn register_server(dll_path: Option<&str>) -> Result<()> {
 
 /// Unregister the COM server and shell extension handlers
 pub fn unregister_server() -> Result<()> {
-    let clsid_str = format!("{{{:?}}}", CLSID_CBXSHELL);
-
-    // 1. Remove from approved shell extensions
     // Note: File extension cleanup is handled by CBXManager via registry_ops
     let approved_key_path =
         "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
     if let Ok(approved_key) = create_key(HKEY_CURRENT_USER, approved_key_path) {
         unsafe {
-            let value_name_wide: Vec<u16> = clsid_str.encode_utf16().chain(Some(0)).collect();
-            let _ = RegDeleteValueW(
-                approved_key,
-                windows::core::PCWSTR(value_name_wide.as_ptr()),
-            );
+            for clsid in [
+                CLSID_CBXSHELL,
+                GUID::from_u128(0x9E6ECB91_5A61_42BD_B851_D3297D9C7F39),
+            ] {
+                let clsid_str = clsid_string(clsid);
+                let value_name_wide: Vec<u16> = clsid_str.encode_utf16().chain(Some(0)).collect();
+                let _ = RegDeleteValueW(
+                    approved_key,
+                    windows::core::PCWSTR(value_name_wide.as_ptr()),
+                );
+            }
             RegCloseKey(approved_key).ok();
         }
     }
 
-    // 2. Delete CLSID
-    let clsid_key_path = format!("Software\\Classes\\CLSID\\{}", clsid_str);
-    delete_key_recursive(HKEY_CURRENT_USER, &clsid_key_path)?;
+    for clsid in [
+        CLSID_CBXSHELL,
+        GUID::from_u128(0x9E6ECB91_5A61_42BD_B851_D3297D9C7F39),
+    ] {
+        let clsid_key_path = format!("Software\\Classes\\CLSID\\{}", clsid_string(clsid));
+        delete_key_recursive(HKEY_CURRENT_USER, &clsid_key_path)?;
+    }
 
     // 3. Delete ProgID
     let _ = delete_key_recursive(HKEY_CURRENT_USER, "Software\\Classes\\CBXShell.CBXShell.1");
