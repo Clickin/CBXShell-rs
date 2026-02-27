@@ -45,10 +45,9 @@ impl IClassFactory_Impl for ClassFactory {
         }
 
         unsafe {
-            // Create CBXShell instance
             crate::utils::debug_log::debug_log("Creating CBXShell instance...");
             let cbxshell = CBXShell::new()?;
-            crate::utils::debug_log::debug_log("CBXShell instance created");
+            crate::utils::debug_log::debug_log("COM handler instance created");
 
             // Cast to IUnknown and query for requested interface
             match cbxshell.cast::<IUnknown>() {

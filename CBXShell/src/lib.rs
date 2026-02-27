@@ -157,7 +157,6 @@ pub extern "system" fn DllGetClassObject(
     unsafe {
         *ppv = std::ptr::null_mut();
 
-        // Validate CLSID matches our CBXShell class
         if *rclsid != com::CLSID_CBXSHELL {
             tracing::warn!("DllGetClassObject: CLASS_E_CLASSNOTAVAILABLE");
             utils::debug_log::debug_log("ERROR: CLSID does not match CLSID_CBXSHELL");

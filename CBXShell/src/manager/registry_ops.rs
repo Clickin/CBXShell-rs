@@ -6,7 +6,6 @@ use anyhow::{Context, Result};
 use winreg::enums::*;
 use winreg::RegKey;
 
-/// CBXShell CLSID string
 const CLSID_STR: &str = "{9E6ECB90-5A61-42BD-B851-D3297D9C7F39}";
 
 /// Configuration registry path
