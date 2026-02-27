@@ -90,9 +90,13 @@ pub fn clear_debug_log() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static TEST_LOG_MUTEX: Mutex<()> = Mutex::new(());
 
     #[test]
     fn test_debug_log_basic() {
+        let _guard = TEST_LOG_MUTEX.lock().unwrap();
         clear_debug_log();
         debug_log("Test message");
 
@@ -104,6 +108,7 @@ mod tests {
     fn test_debug_log_concurrent() {
         use std::thread;
 
+        let _guard = TEST_LOG_MUTEX.lock().unwrap();
         clear_debug_log();
 
         // Small delay to ensure file is deleted
