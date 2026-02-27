@@ -176,7 +176,6 @@ pub fn open_archive_from_stream<R: std::io::Read + std::io::Seek + 'static>(
             Ok(Box::new(zip::ZipArchiveFromStream::new(reader)?))
         }
         ArchiveType::Rar => {
-            // RAR: Stream to temp file (OPTIMIZED)
             crate::utils::debug_log::debug_log("Using optimized RAR streaming to temp file");
             Ok(Box::new(rar::RarArchiveFromMemory::new_from_stream(
                 reader,

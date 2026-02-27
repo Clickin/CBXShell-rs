@@ -13,6 +13,7 @@ use windows::{
     IThumbnailProvider,
     IInitializeWithStream,
     IInitializeWithFile,
+    IInitializeWithItem,
     IQueryInfo
 )]
 pub struct CBXShell {
@@ -55,6 +56,53 @@ impl CBXShell {
             .unwrap_or(false)
     }
 
+    fn normalize_stream_name_to_path(stream_name: &str) -> Option<PathBuf> {
+        let trimmed = stream_name.trim();
+        if trimmed.is_empty() {
+            return None;
+        }
+
+        if trimmed.starts_with("\\\\") || Path::new(trimmed).is_absolute() {
+            return Some(PathBuf::from(trimmed));
+        }
+
+        let lower = trimmed.to_ascii_lowercase();
+        if lower.starts_with("file:///") {
+            let mut path = trimmed[8..].replace('/', "\\");
+            path = path.replace("%20", " ");
+            return Some(PathBuf::from(path));
+        }
+
+        if lower.starts_with("file://") {
+            let mut path = trimmed[7..].replace('/', "\\");
+            path = path.replace("%20", " ");
+            if !path.starts_with("\\") {
+                path = format!("\\\\{}", path);
+            }
+            return Some(PathBuf::from(path));
+        }
+
+        None
+    }
+
+    fn recover_file_path_from_stream(stream: &IStream) -> Option<PathBuf> {
+        let mut stat: STATSTG = unsafe { std::mem::zeroed() };
+        if unsafe { stream.Stat(&mut stat, STATFLAG_DEFAULT) }.is_err() || stat.pwcsName.is_null() {
+            return None;
+        }
+
+        let raw_name = stat.pwcsName;
+        let name_result = unsafe { raw_name.to_string() };
+        unsafe {
+            CoTaskMemFree(Some(raw_name.0 as _));
+        }
+
+        match name_result {
+            Ok(path_string) => Self::normalize_stream_name_to_path(&path_string),
+            Err(_) => None,
+        }
+    }
+
     /// Extract thumbnail from archive (internal implementation)
     ///
     /// This is the core thumbnail extraction logic for IThumbnailProvider that:
@@ -89,20 +137,63 @@ impl CBXShell {
         let stream = self.get_stream();
 
         let archive = match (file_path.as_deref(), stream) {
-            (Some(path), _) if Self::is_rar_archive_path(path) => {
+            (Some(path), stream_opt) if Self::is_rar_archive_path(path) => {
                 crate::utils::debug_log::debug_log(
                     "Step 1: Using direct path-based RAR open (temp file bypass)",
                 );
                 tracing::info!("Opening RAR directly from file path: {:?}", path);
-                open_archive(path)?
+
+                match open_archive(path) {
+                    Ok(archive) => archive,
+                    Err(path_err) => {
+                        tracing::warn!(
+                            "Direct RAR open failed for {:?}: {}. Trying IStream fallback.",
+                            path,
+                            path_err
+                        );
+                        crate::utils::debug_log::debug_log(&format!(
+                            "WARN: Direct RAR open failed: {}. Falling back to IStream path",
+                            path_err
+                        ));
+
+                        if let Some(stream) = stream_opt {
+                            let reader = IStreamReader::new(stream);
+                            open_archive_from_stream(reader).map_err(|stream_err| {
+                                CbxError::Archive(format!(
+                                    "RAR open failed from file path ({}) and stream fallback ({})",
+                                    path_err, stream_err
+                                ))
+                            })?
+                        } else {
+                            return Err(path_err);
+                        }
+                    }
+                }
             }
             (_, Some(stream)) => {
-                crate::utils::debug_log::debug_log(
-                    "Step 1: Using IStream-based archive open (optimized streaming)",
-                );
-                let reader = IStreamReader::new(stream);
-                tracing::debug!("IStreamReader created for direct streaming");
-                open_archive_from_stream(reader)?
+                if let Some(recovered_path) = Self::recover_file_path_from_stream(&stream) {
+                    if Self::is_rar_archive_path(&recovered_path) {
+                        crate::utils::debug_log::debug_log(&format!(
+                            "Step 1: Recovered RAR file path from stream and opening directly: {:?}",
+                            recovered_path
+                        ));
+                        open_archive(&recovered_path)?
+                    } else {
+                        crate::utils::debug_log::debug_log(
+                            "Step 1: Using IStream-based archive open (optimized streaming)",
+                        );
+                        let reader = IStreamReader::new(stream);
+                        tracing::debug!("IStreamReader created for direct streaming");
+                        open_archive_from_stream(reader)?
+                    }
+                } else {
+                    crate::utils::debug_log::debug_log(
+                        "Step 1: Using IStream-based archive open (optimized streaming)",
+                    );
+                    let reader = IStreamReader::new(stream);
+                    tracing::debug!("IStreamReader created for direct streaming");
+                    open_archive_from_stream(reader)?
+                }
             }
             (Some(path), None) => {
                 crate::utils::debug_log::debug_log(
@@ -211,7 +302,6 @@ impl IInitializeWithStream_Impl for CBXShell {
         crate::utils::debug_log::debug_log("===== IInitializeWithStream::Initialize CALLED =====");
         tracing::info!("IInitializeWithStream::Initialize called");
 
-        // Get the IStream and clone it (this calls AddRef)
         let stream = pstream
             .ok_or_else(|| {
                 crate::utils::debug_log::debug_log("ERROR: IStream pointer is null");
@@ -225,6 +315,34 @@ impl IInitializeWithStream_Impl for CBXShell {
         *self.file_path.lock().unwrap() = None;
 
         crate::utils::debug_log::debug_log("SUCCESS: IInitializeWithStream::Initialize completed");
+        Ok(())
+    }
+}
+
+impl IInitializeWithItem_Impl for CBXShell {
+    fn Initialize(&self, psi: Option<&IShellItem>, _grfmode: u32) -> Result<()> {
+        crate::utils::debug_log::debug_log("===== IInitializeWithItem::Initialize CALLED =====");
+
+        let item = psi.ok_or_else(|| {
+            crate::utils::debug_log::debug_log("ERROR: IShellItem pointer is null");
+            Error::from(E_POINTER)
+        })?;
+
+        let display_name = unsafe { item.GetDisplayName(SIGDN_FILESYSPATH)? };
+        let path_string = unsafe { display_name.to_string()? };
+        unsafe {
+            CoTaskMemFree(Some(display_name.0 as _));
+        }
+
+        if path_string.is_empty() {
+            crate::utils::debug_log::debug_log("ERROR: IInitializeWithItem path is empty");
+            return Err(Error::from(E_INVALIDARG));
+        }
+
+        *self.file_path.lock().unwrap() = Some(PathBuf::from(path_string));
+        *self.stream.lock().unwrap() = None;
+
+        crate::utils::debug_log::debug_log("SUCCESS: IInitializeWithItem::Initialize completed");
         Ok(())
     }
 }
@@ -273,13 +391,10 @@ impl IThumbnailProvider_Impl for CBXShell {
             cx
         ));
 
-        // Validate output pointers
         if phbmp.is_null() {
-            crate::utils::debug_log::debug_log("ERROR: phbmp is null");
             return Err(Error::from(E_POINTER));
         }
 
-        // Call internal extraction method
         match self.extract_thumbnail_internal(cx) {
             Ok(hbitmap) => {
                 tracing::info!("GetThumbnail succeeded, returning HBITMAP: {:?}", hbitmap);
@@ -288,26 +403,10 @@ impl IThumbnailProvider_Impl for CBXShell {
                     hbitmap, hbitmap.0 as usize
                 ));
 
-                // UNAVOIDABLE UNSAFE: Writing to COM output parameters
-                // Why unsafe is required:
-                // 1. COM out parameters: phbmp and pdwalpha are raw pointers from COM caller
-                // 2. Standard COM pattern: IThumbnailProvider interface specification
-                // 3. No safe alternative: COM ABI requires raw pointer mutation
-                //
-                // Safety guarantees:
-                // - phbmp validated as non-null above (line 189)
-                // - pdwalpha null-checked before dereferencing
-                // - hbitmap is valid (created by our code)
-                // - COM caller is responsible for pointer validity (COM contract)
                 unsafe {
                     *phbmp = hbitmap;
-
-                    // Set alpha type if requested
-                    // We composite images with white background, removing transparency
-                    // WTS_ALPHATYPE: WTSAT_UNKNOWN=0, WTSAT_RGB=1 (no alpha), WTSAT_ARGB=2 (has alpha)
-                    // Use WTSAT_RGB since we've removed all transparency
                     if !pdwalpha.is_null() {
-                        *pdwalpha = WTSAT_RGB; // Value should be 1
+                        *pdwalpha = WTSAT_RGB;
                         crate::utils::debug_log::debug_log(
                             "Alpha type set to WTSAT_RGB (no alpha channel)",
                         );
@@ -319,7 +418,6 @@ impl IThumbnailProvider_Impl for CBXShell {
             Err(e) => {
                 tracing::error!("GetThumbnail failed: {}", e);
                 crate::utils::debug_log::debug_log(&format!("ERROR: GetThumbnail failed - {}", e));
-                // Convert CbxError to HRESULT
                 let hresult: HRESULT = e.into();
                 crate::utils::debug_log::debug_log(&format!("Returning HRESULT: {:?}", hresult));
                 Err(Error::from(hresult))
