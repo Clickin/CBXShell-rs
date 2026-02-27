@@ -99,49 +99,49 @@ pub struct CBXManagerApp {
     file_group_label: nwg::Label,
 
     #[nwg_control(
-        parent: window,
+        parent: file_group_frame,
         text: "CBZ Image Archives",
-        position: (MARGIN_X + CHECKBOX_X, FILE_GROUP_Y + CHECKBOX_Y_START + (CHECKBOX_STEP * 0)),
+        position: (CHECKBOX_X, CHECKBOX_Y_START + (CHECKBOX_STEP * 0)),
         size: (260, 18)
     )]
     cbz_checkbox: nwg::CheckBox,
 
     #[nwg_control(
-        parent: window,
+        parent: file_group_frame,
         text: "ZIP Archives",
-        position: (MARGIN_X + CHECKBOX_X, FILE_GROUP_Y + CHECKBOX_Y_START + (CHECKBOX_STEP * 1)),
+        position: (CHECKBOX_X, CHECKBOX_Y_START + (CHECKBOX_STEP * 1)),
         size: (260, 18)
     )]
     zip_checkbox: nwg::CheckBox,
 
     #[nwg_control(
-        parent: window,
+        parent: file_group_frame,
         text: "CBR Image Archives",
-        position: (MARGIN_X + CHECKBOX_X, FILE_GROUP_Y + CHECKBOX_Y_START + (CHECKBOX_STEP * 2)),
+        position: (CHECKBOX_X, CHECKBOX_Y_START + (CHECKBOX_STEP * 2)),
         size: (260, 18)
     )]
     cbr_checkbox: nwg::CheckBox,
 
     #[nwg_control(
-        parent: window,
+        parent: file_group_frame,
         text: "RAR Archives",
-        position: (MARGIN_X + CHECKBOX_X, FILE_GROUP_Y + CHECKBOX_Y_START + (CHECKBOX_STEP * 3)),
+        position: (CHECKBOX_X, CHECKBOX_Y_START + (CHECKBOX_STEP * 3)),
         size: (260, 18)
     )]
     rar_checkbox: nwg::CheckBox,
 
     #[nwg_control(
-        parent: window,
+        parent: file_group_frame,
         text: "CB7 Image Archives",
-        position: (MARGIN_X + CHECKBOX_X, FILE_GROUP_Y + CHECKBOX_Y_START + (CHECKBOX_STEP * 4)),
+        position: (CHECKBOX_X, CHECKBOX_Y_START + (CHECKBOX_STEP * 4)),
         size: (260, 18)
     )]
     cb7_checkbox: nwg::CheckBox,
 
     #[nwg_control(
-        parent: window,
+        parent: file_group_frame,
         text: "7Z Archives",
-        position: (MARGIN_X + CHECKBOX_X, FILE_GROUP_Y + CHECKBOX_Y_START + (CHECKBOX_STEP * 5)),
+        position: (CHECKBOX_X, CHECKBOX_Y_START + (CHECKBOX_STEP * 5)),
         size: (260, 18)
     )]
     sevenz_checkbox: nwg::CheckBox,
@@ -163,9 +163,9 @@ pub struct CBXManagerApp {
     advanced_group_label: nwg::Label,
 
     #[nwg_control(
-        parent: window,
+        parent: advanced_group_frame,
         text: "Sort images alphabetically",
-        position: (MARGIN_X + CHECKBOX_X, ADVANCED_GROUP_Y + 16),
+        position: (CHECKBOX_X, 16),
         size: (260, 18)
     )]
     sort_checkbox: nwg::CheckBox,
@@ -179,9 +179,9 @@ pub struct CBXManagerApp {
     sort_help_label: nwg::Label,
 
     #[nwg_control(
-        parent: window,
+        parent: advanced_group_frame,
         text: "Sort preview pages alphabetically",
-        position: (MARGIN_X + CHECKBOX_X, ADVANCED_GROUP_Y + 68),
+        position: (CHECKBOX_X, 68),
         size: (300, 18)
     )]
     sort_preview_checkbox: nwg::CheckBox,
@@ -243,12 +243,18 @@ impl CBXManagerApp {
             "DLL Not Registered"
         });
 
-        self.set_checkbox(&self.cbz_checkbox, self.extension_enabled(&state, ".cbz"));
-        self.set_checkbox(&self.zip_checkbox, self.extension_enabled(&state, ".zip"));
-        self.set_checkbox(&self.cbr_checkbox, self.extension_enabled(&state, ".cbr"));
-        self.set_checkbox(&self.rar_checkbox, self.extension_enabled(&state, ".rar"));
-        self.set_checkbox(&self.cb7_checkbox, self.extension_enabled(&state, ".cb7"));
-        self.set_checkbox(&self.sevenz_checkbox, self.extension_enabled(&state, ".7z"));
+        let zip_family_enabled =
+            self.extension_enabled(&state, ".zip") || self.extension_enabled(&state, ".cbz");
+        self.set_checkbox(&self.cbz_checkbox, zip_family_enabled);
+        self.set_checkbox(&self.zip_checkbox, zip_family_enabled);
+        let rar_family_enabled =
+            self.extension_enabled(&state, ".rar") || self.extension_enabled(&state, ".cbr");
+        self.set_checkbox(&self.cbr_checkbox, rar_family_enabled);
+        self.set_checkbox(&self.rar_checkbox, rar_family_enabled);
+        let sevenz_family_enabled =
+            self.extension_enabled(&state, ".7z") || self.extension_enabled(&state, ".cb7");
+        self.set_checkbox(&self.cb7_checkbox, sevenz_family_enabled);
+        self.set_checkbox(&self.sevenz_checkbox, sevenz_family_enabled);
         self.set_checkbox(&self.sort_checkbox, state.sort_enabled);
         self.set_checkbox(&self.sort_preview_checkbox, state.sort_preview_enabled);
     }
@@ -301,23 +307,29 @@ impl CBXManagerApp {
         state.sort_enabled = self.checkbox_value(&self.sort_checkbox);
         state.sort_preview_enabled = self.checkbox_value(&self.sort_preview_checkbox);
 
+        let zip_family_enabled =
+            self.checkbox_value(&self.zip_checkbox) || self.checkbox_value(&self.cbz_checkbox);
         if let Some(ext) = state.get_extension_mut(".cbz") {
-            ext.thumbnail_enabled = self.checkbox_value(&self.cbz_checkbox);
+            ext.thumbnail_enabled = zip_family_enabled;
         }
         if let Some(ext) = state.get_extension_mut(".zip") {
-            ext.thumbnail_enabled = self.checkbox_value(&self.zip_checkbox);
+            ext.thumbnail_enabled = zip_family_enabled;
         }
+        let rar_family_enabled =
+            self.checkbox_value(&self.rar_checkbox) || self.checkbox_value(&self.cbr_checkbox);
         if let Some(ext) = state.get_extension_mut(".cbr") {
-            ext.thumbnail_enabled = self.checkbox_value(&self.cbr_checkbox);
+            ext.thumbnail_enabled = rar_family_enabled;
         }
         if let Some(ext) = state.get_extension_mut(".rar") {
-            ext.thumbnail_enabled = self.checkbox_value(&self.rar_checkbox);
+            ext.thumbnail_enabled = rar_family_enabled;
         }
+        let sevenz_family_enabled =
+            self.checkbox_value(&self.sevenz_checkbox) || self.checkbox_value(&self.cb7_checkbox);
         if let Some(ext) = state.get_extension_mut(".cb7") {
-            ext.thumbnail_enabled = self.checkbox_value(&self.cb7_checkbox);
+            ext.thumbnail_enabled = sevenz_family_enabled;
         }
         if let Some(ext) = state.get_extension_mut(".7z") {
-            ext.thumbnail_enabled = self.checkbox_value(&self.sevenz_checkbox);
+            ext.thumbnail_enabled = sevenz_family_enabled;
         }
 
         state
@@ -342,7 +354,13 @@ impl CBXManagerApp {
     fn on_register_dll(&self) {
         match registry_ops::register_dll() {
             Ok(_) => {
+                let mut state = self.build_state_from_controls();
+                state.dll_registered = true;
+                if let Err(e) = registry_ops::write_app_state(&state) {
+                    eprintln!("Failed to apply extension handlers after DLL registration: {}", e);
+                }
                 self.initialize_state();
+                self.set_needs_restart(true);
             }
             Err(e) => {
                 eprintln!("Failed to register DLL: {}", e);
