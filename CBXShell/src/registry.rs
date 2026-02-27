@@ -32,7 +32,8 @@ fn register_clsid(module_path: &str, clsid: GUID, description: &str) -> Result<(
         RegCloseKey(clsid_key).ok();
     }
 
-    let approved_key_path = "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
+    let approved_key_path =
+        "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
     let approved_key = create_key(HKEY_CURRENT_USER, approved_key_path)?;
     set_string_value(approved_key, Some(&clsid_str), description)?;
     unsafe {
@@ -267,10 +268,7 @@ pub fn unregister_server() -> Result<()> {
         "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
     if let Ok(approved_key) = create_key(HKEY_CURRENT_USER, approved_key_path) {
         unsafe {
-            for clsid in [
-                CLSID_CBXSHELL,
-                GUID::from_u128(0x9E6ECB91_5A61_42BD_B851_D3297D9C7F39),
-            ] {
+            for clsid in [CLSID_CBXSHELL] {
                 let clsid_str = clsid_string(clsid);
                 let value_name_wide: Vec<u16> = clsid_str.encode_utf16().chain(Some(0)).collect();
                 let _ = RegDeleteValueW(
@@ -282,10 +280,7 @@ pub fn unregister_server() -> Result<()> {
         }
     }
 
-    for clsid in [
-        CLSID_CBXSHELL,
-        GUID::from_u128(0x9E6ECB91_5A61_42BD_B851_D3297D9C7F39),
-    ] {
+    for clsid in [CLSID_CBXSHELL] {
         let clsid_key_path = format!("Software\\Classes\\CLSID\\{}", clsid_string(clsid));
         delete_key_recursive(HKEY_CURRENT_USER, &clsid_key_path)?;
     }
