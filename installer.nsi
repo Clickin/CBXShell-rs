@@ -114,8 +114,6 @@ VIAddVersionKey "ProductVersion" "${PRODUCT_VERSION}"
 !insertmacro MUI_LANGUAGE "English"
 
 Var IsUpgrade
-Var UninstallIsUpgrade
-
 ; Explicit section IDs for preselection logic in .onInit
 !define SecCore 0
 !define SecManager 1
@@ -144,46 +142,15 @@ Function .onInit
   ${EndIf}
 !endif
 
-  ; Check if already installed
+  ; Detect existing installation, but do not force uninstall during initialization.
+  ; The installer UI should always be shown so the user can decide how to proceed.
   StrCpy $IsUpgrade 0
   ReadRegStr $R0 ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "UninstallString"
-  StrCmp $R0 "" done
-
+  StrCmp $R0 "" done_detect
   StrCpy $IsUpgrade 1
-  IfSilent uninst_silent uninst_prompt
 
-uninst_prompt:
-
-  MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION \
-  "${PRODUCT_NAME} is already installed.$\n$\nClick OK to remove the previous version or Cancel to cancel this installation." \
-  IDOK uninst
-  Abort
-
-uninst:
-  ClearErrors
-  ExecWait '"$R0" /S /UPGRADE _?="$INSTDIR"' $1
-  Goto uninst_result
-
-uninst_silent:
-  ClearErrors
-  ExecWait '"$R0" /S /UPGRADE _?="$INSTDIR"' $1
-
-uninst_result:
-  ${If} ${Errors}
-    SetErrorLevel 1
-    Abort
-  ${EndIf}
-
-  ${If} $1 != 0
-    SetErrorLevel $1
-    Abort
-  ${EndIf}
-
-  Delete "$R0"
-
-done:
+done_detect:
   ; Force deterministic optional section preselection.
-  !insertmacro UnselectSection ${SecManager}
   !insertmacro UnselectSection ${SecZIP}
   !insertmacro UnselectSection ${SecRAR}
   !insertmacro UnselectSection ${Sec7Z}
@@ -191,9 +158,11 @@ done:
   !insertmacro UnselectSection ${SecCBR}
   !insertmacro UnselectSection ${SecCB7}
 
+  ; CBXManager is now required for update checking and must always be installed.
+  !insertmacro SelectSection ${SecManager}
+
   ${If} $IsUpgrade == 0
     ; Fresh install defaults: manager + all file associations.
-    !insertmacro SelectSection ${SecManager}
     !insertmacro SelectSection ${SecZIP}
     !insertmacro SelectSection ${SecRAR}
     !insertmacro SelectSection ${Sec7Z}
@@ -231,16 +200,6 @@ done:
     ${If} $R0 == "${CLSID}"
       !insertmacro SelectSection ${SecCB7}
     ${EndIf}
-  ${EndIf}
-FunctionEnd
-
-Function un.onInit
-  StrCpy $UninstallIsUpgrade 0
-  ${GetParameters} $R0
-  ClearErrors
-  ${GetOptions} $R0 "/UPGRADE" $R1
-  ${IfNot} ${Errors}
-    StrCpy $UninstallIsUpgrade 1
   ${EndIf}
 FunctionEnd
 
@@ -433,36 +392,34 @@ Section "Uninstall"
 
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "CBXShellUpdateCheck"
 
-  ${If} $UninstallIsUpgrade == 0
-    ; Remove registry entries for file associations only when owned by this installer
-    Push "Software\Classes\.zip\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
-    Call un.DeleteAssocIfOwned
-    Push "Software\Classes\.zip\shellex\{00021500-0000-0000-C000-000000000046}"
-    Call un.DeleteAssocIfOwned
-    Push "Software\Classes\.cbz\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
-    Call un.DeleteAssocIfOwned
-    Push "Software\Classes\.cbz\shellex\{00021500-0000-0000-C000-000000000046}"
-    Call un.DeleteAssocIfOwned
-    Push "Software\Classes\.rar\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
-    Call un.DeleteAssocIfOwned
-    Push "Software\Classes\.rar\shellex\{00021500-0000-0000-C000-000000000046}"
-    Call un.DeleteAssocIfOwned
-    Push "Software\Classes\.cbr\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
-    Call un.DeleteAssocIfOwned
-    Push "Software\Classes\.cbr\shellex\{00021500-0000-0000-C000-000000000046}"
-    Call un.DeleteAssocIfOwned
-    Push "Software\Classes\.7z\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
-    Call un.DeleteAssocIfOwned
-    Push "Software\Classes\.7z\shellex\{00021500-0000-0000-C000-000000000046}"
-    Call un.DeleteAssocIfOwned
-    Push "Software\Classes\.cb7\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
-    Call un.DeleteAssocIfOwned
-    Push "Software\Classes\.cb7\shellex\{00021500-0000-0000-C000-000000000046}"
-    Call un.DeleteAssocIfOwned
+  ; Remove registry entries for file associations only when owned by this installer
+  Push "Software\Classes\.zip\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.zip\shellex\{00021500-0000-0000-C000-000000000046}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.cbz\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.cbz\shellex\{00021500-0000-0000-C000-000000000046}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.rar\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.rar\shellex\{00021500-0000-0000-C000-000000000046}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.cbr\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.cbr\shellex\{00021500-0000-0000-C000-000000000046}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.7z\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.7z\shellex\{00021500-0000-0000-C000-000000000046}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.cb7\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.cb7\shellex\{00021500-0000-0000-C000-000000000046}"
+  Call un.DeleteAssocIfOwned
 
-    ; Remove settings
-    DeleteRegKey HKCU "${PRODUCT_SETTINGS_KEY}"
-  ${EndIf}
+  ; Remove settings
+  DeleteRegKey HKCU "${PRODUCT_SETTINGS_KEY}"
 
   ; Remove shortcuts
   Delete "$SMPROGRAMS\${PRODUCT_NAME}\*.*"

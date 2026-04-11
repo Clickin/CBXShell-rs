@@ -9,6 +9,7 @@ Modern Windows Shell Extension for ZIP/RAR/7z comic book archive thumbnail previ
 - **Modern Windows Integration**: Uses IThumbnailProvider for native Windows Vista+ compatibility
 - **Multi-Format Support**: ZIP, RAR, 7z archives (.cbz, .cbr, .cb7)
 - **Modern Image Formats**: JPEG, PNG, GIF, BMP, TIFF, ICO, **WebP**, **AVIF**
+- **GitHub Release Update Awareness**: Per-user background update checks with manual check from CBXShell Manager
 - **Pure Rust**: Memory-safe implementation using `windows-rs`
 - **High-Quality Thumbnails**: Advanced resizing with `fast_image_resize` for crisp previews
 - **Shell Integration**: Thumbnail previews and tooltips in Windows Explorer
@@ -68,7 +69,7 @@ $env:PROCESSOR_ARCHITECTURE
 - Windows 10 or later (64-bit)
 - For Windows on ARM: Windows 11 or later
 
-### AVIF Support Policy (v5.1.2)
+### AVIF Support Policy (v5.2.0)
 
 CBXShell uses the Windows Imaging Component (WIC) path as the supported AVIF decode path.
 
@@ -164,57 +165,30 @@ start explorer.exe
 - [x] Full integration with Windows Explorer
 
 ### ✅ Phase 5: Configuration Manager (COMPLETE)
-- [x] Modern GUI using egui framework
+- [x] Native Windows GUI using native-windows-gui
 - [x] Enable/disable handlers for file formats
 - [x] Sort preference configuration
 - [x] Registry operations for handler management
+- [x] GitHub Release update checker with background cache and manual check
 
 ## Project Structure
 
 ```
 CBXShell/
-├── Cargo.toml                   # Workspace configuration
-├── CBXShell/
-│   ├── Cargo.toml               # Library + binary configuration
-│   ├── build.rs                 # Build script with resource embedding
-│   ├── src/
-│   │   ├── lib.rs               # DLL entry point & COM exports
-│   │   ├── com/                 # COM implementation
-│   │   │   ├── mod.rs
-│   │   │   ├── class_factory.rs # COM class factory
-│   │   │   ├── cbxshell.rs      # IThumbnailProvider + IInitializeWithStream + IQueryInfo
-│   │   │   ├── persist_file.rs  # (legacy support)
-│   │   │   ├── extract_image.rs # (legacy support)
-│   │   │   └── query_info.rs    # Tooltip implementation
-│   │   ├── archive/             # Archive format support
-│   │   │   ├── mod.rs           # Archive trait and unified API
-│   │   │   ├── zip.rs           # ZIP/CBZ support
-│   │   │   ├── rar.rs           # RAR/CBR support
-│   │   │   ├── sevenz.rs        # 7z/CB7 support
-│   │   │   ├── utils.rs         # Image detection, natural sorting
-│   │   │   ├── config.rs        # Registry configuration reading
-│   │   │   └── stream_reader.rs # IStream to memory conversion
-│   │   ├── image_processor/     # Image processing
-│   │   │   ├── mod.rs
-│   │   │   ├── decoder.rs       # Image decoding (WebP, AVIF, etc.)
-│   │   │   ├── resizer.rs       # High-quality resizing
-│   │   │   ├── hbitmap.rs       # Windows HBITMAP conversion
-│   │   │   └── thumbnail.rs     # Thumbnail creation pipeline
-│   │   ├── registry.rs          # COM registration
-│   │   ├── utils/               # Utilities
-│   │   │   ├── mod.rs
-│   │   │   ├── error.rs         # Error types
-│   │   │   ├── file.rs          # File utilities
-│   │   │   └── debug_log.rs     # File-based debug logging
-│   │   └── manager/             # Configuration GUI
-│   │       ├── main.rs          # Entry point
-│   │       ├── ui.rs            # egui UI implementation
-│   │       ├── state.rs         # Application state
-│   │       ├── registry_ops.rs  # Registry operations
-│   │       └── utils.rs         # Helper functions
-│   └── tests/                   # Integration tests
-│       └── test_webp_decode.rs  # WebP decoding tests
-├── build_nsis.ps1               # NSIS installer script
+├── Cargo.toml                        # Workspace configuration
+├── CBXShell/                         # DLL, COM glue, registry, manager source
+├── cbxmanager/                       # Manager executable package
+├── crates/
+│   ├── cbxshell-core/               # Shared error/logging
+│   ├── cbxshell-archive/            # Archive handling
+│   ├── cbxshell-image-magic/        # Image signature checks
+│   ├── cbxshell-image-codec/        # Decode path
+│   ├── cbxshell-image-resize/       # Resize path
+│   ├── cbxshell-bitmap-win/         # HBITMAP conversion
+│   ├── cbxshell-thumbnail-win/      # Thumbnail orchestration
+│   └── cbxshell-gui-win/            # Manager runtime
+├── build_nsis.ps1                    # NSIS installer script
+├── build_chocolatey.ps1              # Optional Chocolatey packaging helper
 └── README.md
 ```
 
@@ -288,17 +262,18 @@ Get-Content "$env:TEMP\cbxshell_debug.log" -Wait
 
 ## Configuration Manager
 
-CBXShell includes a modern configuration GUI built with egui:
+CBXShell includes a native Windows configuration GUI built with `native-windows-gui`:
 
 ```cmd
 # Run the configuration manager
-CBXShell.exe --manager
+CBXManager.exe
 ```
 
 Features:
 - **Handler Management**: Enable/disable thumbnail and tooltip handlers per file type
 - **Format Selection**: Choose which archive formats to handle (CBZ, CBR, CB7, ZIP, RAR, 7Z)
 - **Sorting Options**: Configure alphabetical vs. discovery order for images
+- **Update Checks**: Manual check from the Tools menu plus per-user background GitHub Release checks
 
 The manager provides a clean, modern interface for customizing CBXShell behavior without manual registry editing.
 
@@ -321,15 +296,18 @@ Create a standalone installer for direct distribution:
 # Build NSIS installer
 .\build_nsis.ps1 -Configuration Release
 
-# Output: dist\CBXShell-Setup-5.0.0.exe
+# Output:
+# dist\CBXShell-rs-Setup-<version>-x64.exe
+# dist\CBXShell-rs-Setup-<version>-ARM64.exe
 ```
 
 **Requirements:**
 - [NSIS 3.x](https://nsis.sourceforge.io/Download) or later
 
-### Building a Chocolatey Package
+### Building a Chocolatey Package (Optional)
 
-Create a Chocolatey package that bundles the NSIS installers:
+GitHub Releases with NSIS installers are the primary supported distribution channel.
+Chocolatey packaging is optional release-ops work:
 
 ```powershell
 # Build Chocolatey package (includes installers)
@@ -355,40 +333,3 @@ See `The Code Project Open License (CPOL) 1.02.md` for details.
 - Uses `windows-rs` for COM interop (Microsoft)
 - Uses `unrar` crate from https://github.com/muja/unrar.rs
 
-## Roadmap
-
-### ✅ Completed (v5.0.0)
-- ✅ Modern IThumbnailProvider implementation
-- ✅ Multi-format archive support (ZIP, RAR, 7z)
-- ✅ Modern image format support (WebP, AVIF)
-- ✅ High-quality thumbnail generation with `fast_image_resize`
-- ✅ Configuration manager with modern egui GUI
-- ✅ Per-user installation support
-
-### Future Enhancements
-
-#### v5.1.0 (Planned)
-- **Context Menu Integration**: Right-click folder thumbnail generation
-  - Extract and display thumbnails for folders containing comic archives
-  - Batch thumbnail generation for archive collections
-  - Folder icon overlay with first archive's cover
-- **Test Coverage Improvements**
-  - Comprehensive integration test suite
-  - Performance benchmarking
-  - Memory leak testing
-  - Windows 11 compatibility verification
-- **Windows 11 Enhancements**
-  - Dark mode support for thumbnails
-  - Improved thumbnail caching
-  - Enhanced error reporting
-
-#### v5.2.0
-- ARM64 support for Windows on ARM
-- Performance optimizations for large archives
-- Additional sorting options (by date, by size)
-
-#### v6.0.0
-- Additional archive formats (TAR.GZ, CBT)
-- Enhanced metadata extraction (reading order, series information)
-- Custom thumbnail templates
-- Cloud storage provider integration

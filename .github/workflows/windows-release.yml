@@ -148,6 +148,16 @@ jobs:
 
           $Body | Set-Content -Path release_body.md -Encoding utf8
 
+          $SummaryCandidates = @(
+            "docs/release/$Tag-release-summary.md",
+            "docs/release/$($Tag.TrimStart('v'))-release-summary.md"
+          )
+          $SummaryPath = $SummaryCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+          if ($SummaryPath) {
+            Add-Content -Path release_body.md -Value "`n---`n"
+            Get-Content -Path $SummaryPath | Add-Content -Path release_body.md
+          }
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
