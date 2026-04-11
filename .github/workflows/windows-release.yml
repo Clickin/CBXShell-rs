@@ -149,8 +149,10 @@ jobs:
           $Body | Set-Content -Path release_body.md -Encoding utf8
 
           $SummaryCandidates = @(
-            "docs/release/$Tag-release-summary.md",
-            "docs/release/$($Tag.TrimStart('v'))-release-summary.md"
+            ".github/release-notes/$Tag.md",
+            ".github/release-notes/$($Tag.TrimStart('v')).md",
+            ".github/release-notes/$Tag-release-summary.md",
+            ".github/release-notes/$($Tag.TrimStart('v'))-release-summary.md"
           )
           $SummaryPath = $SummaryCandidates | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
           if ($SummaryPath) {
