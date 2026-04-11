@@ -8,6 +8,7 @@
 !include "MUI2.nsh"
 !include "x64.nsh"
 !include "FileFunc.nsh"
+!include "Sections.nsh"
 
 ;--------------------------------
 ; Architecture Configuration
@@ -49,7 +50,7 @@
 ; Configuration
 
 !define PRODUCT_NAME "CBXShell-rs"
-!define PRODUCT_VERSION "5.1.2"
+!define PRODUCT_VERSION "5.2.0"
 !define PRODUCT_WEB_SITE "https://github.com/Clickin/CBXShell-rs"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 !define PRODUCT_UNINST_ROOT_KEY "HKLM"
@@ -57,6 +58,8 @@
 
 ; CLSID for COM registration
 !define CLSID "{9E6ECB90-5A61-42BD-B851-D3297D9C7F39}"
+!define THUMB_HANDLER_GUID "{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+!define INFOTIP_HANDLER_GUID "{00021500-0000-0000-C000-000000000046}"
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION} (${ARCH_BITS})"
 !ifdef SNAPSHOT_TIMESTAMP
@@ -110,6 +113,19 @@ VIAddVersionKey "ProductVersion" "${PRODUCT_VERSION}"
 
 !insertmacro MUI_LANGUAGE "English"
 
+Var IsUpgrade
+Var UninstallIsUpgrade
+
+; Explicit section IDs for preselection logic in .onInit
+!define SecCore 0
+!define SecManager 1
+!define SecZIP 2
+!define SecCBZ 3
+!define SecRAR 4
+!define SecCBR 5
+!define Sec7Z 6
+!define SecCB7 7
+
 ;--------------------------------
 ; Helper Functions
 
@@ -129,8 +145,14 @@ Function .onInit
 !endif
 
   ; Check if already installed
+  StrCpy $IsUpgrade 0
   ReadRegStr $R0 ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "UninstallString"
   StrCmp $R0 "" done
+
+  StrCpy $IsUpgrade 1
+  IfSilent uninst_silent uninst_prompt
+
+uninst_prompt:
 
   MessageBox MB_OKCANCEL|MB_ICONEXCLAMATION \
   "${PRODUCT_NAME} is already installed.$\n$\nClick OK to remove the previous version or Cancel to cancel this installation." \
@@ -138,10 +160,88 @@ Function .onInit
   Abort
 
 uninst:
-  ExecWait '"$R0" /S _?=$INSTDIR'
+  ClearErrors
+  ExecWait '"$R0" /S /UPGRADE _?="$INSTDIR"' $1
+  Goto uninst_result
+
+uninst_silent:
+  ClearErrors
+  ExecWait '"$R0" /S /UPGRADE _?="$INSTDIR"' $1
+
+uninst_result:
+  ${If} ${Errors}
+    SetErrorLevel 1
+    Abort
+  ${EndIf}
+
+  ${If} $1 != 0
+    SetErrorLevel $1
+    Abort
+  ${EndIf}
+
   Delete "$R0"
 
 done:
+  ; Force deterministic optional section preselection.
+  !insertmacro UnselectSection ${SecManager}
+  !insertmacro UnselectSection ${SecZIP}
+  !insertmacro UnselectSection ${SecRAR}
+  !insertmacro UnselectSection ${Sec7Z}
+  !insertmacro UnselectSection ${SecCBZ}
+  !insertmacro UnselectSection ${SecCBR}
+  !insertmacro UnselectSection ${SecCB7}
+
+  ${If} $IsUpgrade == 0
+    ; Fresh install defaults: manager + all file associations.
+    !insertmacro SelectSection ${SecManager}
+    !insertmacro SelectSection ${SecZIP}
+    !insertmacro SelectSection ${SecRAR}
+    !insertmacro SelectSection ${Sec7Z}
+    !insertmacro SelectSection ${SecCBZ}
+    !insertmacro SelectSection ${SecCBR}
+    !insertmacro SelectSection ${SecCB7}
+  ${Else}
+    ; Upgrade defaults: only preselect formats already associated to our CLSID.
+    ReadRegStr $R0 HKCU "Software\Classes\.zip\shellex\${THUMB_HANDLER_GUID}" ""
+    ${If} $R0 == "${CLSID}"
+      !insertmacro SelectSection ${SecZIP}
+    ${EndIf}
+
+    ReadRegStr $R0 HKCU "Software\Classes\.rar\shellex\${THUMB_HANDLER_GUID}" ""
+    ${If} $R0 == "${CLSID}"
+      !insertmacro SelectSection ${SecRAR}
+    ${EndIf}
+
+    ReadRegStr $R0 HKCU "Software\Classes\.7z\shellex\${THUMB_HANDLER_GUID}" ""
+    ${If} $R0 == "${CLSID}"
+      !insertmacro SelectSection ${Sec7Z}
+    ${EndIf}
+
+    ReadRegStr $R0 HKCU "Software\Classes\.cbz\shellex\${THUMB_HANDLER_GUID}" ""
+    ${If} $R0 == "${CLSID}"
+      !insertmacro SelectSection ${SecCBZ}
+    ${EndIf}
+
+    ReadRegStr $R0 HKCU "Software\Classes\.cbr\shellex\${THUMB_HANDLER_GUID}" ""
+    ${If} $R0 == "${CLSID}"
+      !insertmacro SelectSection ${SecCBR}
+    ${EndIf}
+
+    ReadRegStr $R0 HKCU "Software\Classes\.cb7\shellex\${THUMB_HANDLER_GUID}" ""
+    ${If} $R0 == "${CLSID}"
+      !insertmacro SelectSection ${SecCB7}
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+
+Function un.onInit
+  StrCpy $UninstallIsUpgrade 0
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} $R0 "/UPGRADE" $R1
+  ${IfNot} ${Errors}
+    StrCpy $UninstallIsUpgrade 1
+  ${EndIf}
 FunctionEnd
 
 Function RegisterDLL
@@ -152,11 +252,12 @@ Function RegisterDLL
   ExecWait 'regsvr32.exe /s "$R0"' $1
 
   ${If} $1 != 0
-    DetailPrint "Warning: Registration failed for $R0 (Error: $1)"
-    MessageBox MB_OK|MB_ICONEXCLAMATION "Failed to register $R0. Error code: $1"
-  ${Else}
-    DetailPrint "Successfully registered: $R0"
+    DetailPrint "ERROR: Registration failed for $R0 (Error: $1)"
+    SetErrorLevel $1
+    Abort
   ${EndIf}
+
+  DetailPrint "Successfully registered: $R0"
 FunctionEnd
 
 Function Un.RegisterDLL
@@ -168,10 +269,34 @@ Function Un.RegisterDLL
   DetailPrint "Unregistered: $R0"
 FunctionEnd
 
+Function un.DeleteAssocIfOwned
+  ; Parameters: registry path on stack
+  Pop $R0
+  ReadRegStr $R1 HKCU "$R0" ""
+  StrCmp $R1 "${CLSID}" 0 done
+  DeleteRegKey HKCU "$R0"
+done:
+FunctionEnd
+
+Function WriteAssocSafe
+  ; Parameters: registry path on stack
+  Pop $R0
+  ReadRegStr $R1 HKCU "$R0" ""
+  StrCmp $R1 "" write
+  StrCmp $R1 "${CLSID}" done
+  DetailPrint "Skipped existing association at HKCU\$R0 (current: $R1)"
+  Goto done
+
+write:
+  WriteRegStr HKCU "$R0" "" "${CLSID}"
+
+done:
+FunctionEnd
+
 ;--------------------------------
 ; Installation Sections
 
-Section "CBXShell (Required)" SecCore
+Section "CBXShell (Required)" ${SecCore}
   SectionIn RO
   SetOutPath "$INSTDIR"
 
@@ -188,16 +313,19 @@ Section "CBXShell (Required)" SecCore
   ; Create registry entries for shell extension settings
   ; NoSort=1 (default): Fast mode - return first image found (recommended for large archives)
   ; NoSort=0: Sort alphabetically - slower but predictable order
+  ReadRegStr $R0 HKCU "${PRODUCT_SETTINGS_KEY}" "NoSort"
+  StrCmp $R0 "" 0 +2
   WriteRegDWORD HKCU "${PRODUCT_SETTINGS_KEY}" "NoSort" 1
 
   ; Write uninstaller
   WriteUninstaller "$INSTDIR\Uninstall.exe"
 
   ; Write registry keys for Add/Remove Programs
-  WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayName" "${PRODUCT_NAME} (${ARCH_BITS})"
+  WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayName" "${PRODUCT_NAME}"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "UninstallString" "$INSTDIR\Uninstall.exe"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayIcon" "$INSTDIR\CBXManager.exe"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "DisplayVersion" "${PRODUCT_VERSION}"
+  WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "Publisher" "Clickin"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "URLInfoAbout" "${PRODUCT_WEB_SITE}"
   WriteRegStr ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "InstallLocation" "$INSTDIR"
   WriteRegDWORD ${PRODUCT_UNINST_ROOT_KEY} "${PRODUCT_UNINST_KEY}" "NoModify" 1
@@ -213,7 +341,8 @@ Section "CBXShell (Required)" SecCore
   File "LICENSE.txt"
 SectionEnd
 
-Section "CBXManager (Configuration Tool)" SecManager
+Section "CBXManager (Configuration Tool)" ${SecManager}
+  SectionIn RO
   SetOutPath "$INSTDIR"
 
   ; Install manager executable
@@ -227,38 +356,57 @@ Section "CBXManager (Configuration Tool)" SecManager
 
   ; Create Desktop shortcut (optional)
   CreateShortCut "$DESKTOP\CBXShell Manager.lnk" "$INSTDIR\CBXManager.exe"
+
+  ; Register per-user background update check on login
+  WriteRegStr HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "CBXShellUpdateCheck" '"$INSTDIR\CBXManager.exe" --check-updates-background'
 SectionEnd
 
-Section "Enable for ZIP files" SecZIP
+Section "Enable for ZIP files" ${SecZIP}
   ; Enable thumbnail handler for .zip files
-  WriteRegStr HKCU "Software\Classes\.zip\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}" "" "${CLSID}"
-  WriteRegStr HKCU "Software\Classes\.zip\shellex\{00021500-0000-0000-C000-000000000046}" "" "${CLSID}"
+  Push "Software\Classes\.zip\shellex\${THUMB_HANDLER_GUID}"
+  Call WriteAssocSafe
+  Push "Software\Classes\.zip\shellex\${INFOTIP_HANDLER_GUID}"
+  Call WriteAssocSafe
 SectionEnd
 
-Section "Enable for CBZ files" SecCBZ
+Section "Enable for CBZ files" ${SecCBZ}
   ; Enable thumbnail handler for .cbz files
-  WriteRegStr HKCU "Software\Classes\.cbz\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}" "" "${CLSID}"
-  WriteRegStr HKCU "Software\Classes\.cbz\shellex\{00021500-0000-0000-C000-000000000046}" "" "${CLSID}"
+  Push "Software\Classes\.cbz\shellex\${THUMB_HANDLER_GUID}"
+  Call WriteAssocSafe
+  Push "Software\Classes\.cbz\shellex\${INFOTIP_HANDLER_GUID}"
+  Call WriteAssocSafe
 SectionEnd
 
-Section "Enable for RAR files" SecRAR
+Section "Enable for RAR files" ${SecRAR}
   ; Enable thumbnail handler for .rar files
-  WriteRegStr HKCU "Software\Classes\.rar\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}" "" "${CLSID}"
-  WriteRegStr HKCU "Software\Classes\.rar\shellex\{00021500-0000-0000-C000-000000000046}" "" "${CLSID}"
+  Push "Software\Classes\.rar\shellex\${THUMB_HANDLER_GUID}"
+  Call WriteAssocSafe
+  Push "Software\Classes\.rar\shellex\${INFOTIP_HANDLER_GUID}"
+  Call WriteAssocSafe
 SectionEnd
 
-Section "Enable for CBR files" SecCBR
+Section "Enable for CBR files" ${SecCBR}
   ; Enable thumbnail handler for .cbr files
-  WriteRegStr HKCU "Software\Classes\.cbr\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}" "" "${CLSID}"
-  WriteRegStr HKCU "Software\Classes\.cbr\shellex\{00021500-0000-0000-C000-000000000046}" "" "${CLSID}"
+  Push "Software\Classes\.cbr\shellex\${THUMB_HANDLER_GUID}"
+  Call WriteAssocSafe
+  Push "Software\Classes\.cbr\shellex\${INFOTIP_HANDLER_GUID}"
+  Call WriteAssocSafe
 SectionEnd
 
-Section "Enable for 7Z files" Sec7Z
+Section "Enable for 7Z files" ${Sec7Z}
   ; Enable thumbnail handler for .7z files
-  WriteRegStr HKCU "Software\Classes\.7z\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}" "" "${CLSID}"
-  WriteRegStr HKCU "Software\Classes\.7z\shellex\{00021500-0000-0000-C000-000000000046}" "" "${CLSID}"
-  WriteRegStr HKCU "Software\Classes\.cb7\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}" "" "${CLSID}"
-  WriteRegStr HKCU "Software\Classes\.cb7\shellex\{00021500-0000-0000-C000-000000000046}" "" "${CLSID}"
+  Push "Software\Classes\.7z\shellex\${THUMB_HANDLER_GUID}"
+  Call WriteAssocSafe
+  Push "Software\Classes\.7z\shellex\${INFOTIP_HANDLER_GUID}"
+  Call WriteAssocSafe
+SectionEnd
+
+Section "Enable for CB7 files" ${SecCB7}
+  ; Enable thumbnail handler for .cb7 files
+  Push "Software\Classes\.cb7\shellex\${THUMB_HANDLER_GUID}"
+  Call WriteAssocSafe
+  Push "Software\Classes\.cb7\shellex\${INFOTIP_HANDLER_GUID}"
+  Call WriteAssocSafe
 SectionEnd
 
 ;--------------------------------
@@ -271,7 +419,8 @@ SectionEnd
   !insertmacro MUI_DESCRIPTION_TEXT ${SecCBZ} "Enable thumbnail preview for .cbz (Comic Book ZIP) files"
   !insertmacro MUI_DESCRIPTION_TEXT ${SecRAR} "Enable thumbnail preview for .rar files"
   !insertmacro MUI_DESCRIPTION_TEXT ${SecCBR} "Enable thumbnail preview for .cbr (Comic Book RAR) files"
-  !insertmacro MUI_DESCRIPTION_TEXT ${Sec7Z} "Enable thumbnail preview for .7z and .cb7 files"
+  !insertmacro MUI_DESCRIPTION_TEXT ${Sec7Z} "Enable thumbnail preview for .7z files"
+  !insertmacro MUI_DESCRIPTION_TEXT ${SecCB7} "Enable thumbnail preview for .cb7 (Comic Book 7Z) files"
 !insertmacro MUI_FUNCTION_DESCRIPTION_END
 
 ;--------------------------------
@@ -282,22 +431,38 @@ Section "Uninstall"
   Push "$INSTDIR\CBXShell.dll"
   Call Un.RegisterDLL
 
-  ; Remove registry entries for file associations
-  DeleteRegKey HKCU "Software\Classes\.zip\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
-  DeleteRegKey HKCU "Software\Classes\.zip\shellex\{00021500-0000-0000-C000-000000000046}"
-  DeleteRegKey HKCU "Software\Classes\.cbz\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
-  DeleteRegKey HKCU "Software\Classes\.cbz\shellex\{00021500-0000-0000-C000-000000000046}"
-  DeleteRegKey HKCU "Software\Classes\.rar\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
-  DeleteRegKey HKCU "Software\Classes\.rar\shellex\{00021500-0000-0000-C000-000000000046}"
-  DeleteRegKey HKCU "Software\Classes\.cbr\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
-  DeleteRegKey HKCU "Software\Classes\.cbr\shellex\{00021500-0000-0000-C000-000000000046}"
-  DeleteRegKey HKCU "Software\Classes\.7z\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
-  DeleteRegKey HKCU "Software\Classes\.7z\shellex\{00021500-0000-0000-C000-000000000046}"
-  DeleteRegKey HKCU "Software\Classes\.cb7\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
-  DeleteRegKey HKCU "Software\Classes\.cb7\shellex\{00021500-0000-0000-C000-000000000046}"
+  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "CBXShellUpdateCheck"
 
-  ; Remove settings
-  DeleteRegKey HKCU "${PRODUCT_SETTINGS_KEY}"
+  ${If} $UninstallIsUpgrade == 0
+    ; Remove registry entries for file associations only when owned by this installer
+    Push "Software\Classes\.zip\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+    Call un.DeleteAssocIfOwned
+    Push "Software\Classes\.zip\shellex\{00021500-0000-0000-C000-000000000046}"
+    Call un.DeleteAssocIfOwned
+    Push "Software\Classes\.cbz\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+    Call un.DeleteAssocIfOwned
+    Push "Software\Classes\.cbz\shellex\{00021500-0000-0000-C000-000000000046}"
+    Call un.DeleteAssocIfOwned
+    Push "Software\Classes\.rar\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+    Call un.DeleteAssocIfOwned
+    Push "Software\Classes\.rar\shellex\{00021500-0000-0000-C000-000000000046}"
+    Call un.DeleteAssocIfOwned
+    Push "Software\Classes\.cbr\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+    Call un.DeleteAssocIfOwned
+    Push "Software\Classes\.cbr\shellex\{00021500-0000-0000-C000-000000000046}"
+    Call un.DeleteAssocIfOwned
+    Push "Software\Classes\.7z\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+    Call un.DeleteAssocIfOwned
+    Push "Software\Classes\.7z\shellex\{00021500-0000-0000-C000-000000000046}"
+    Call un.DeleteAssocIfOwned
+    Push "Software\Classes\.cb7\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+    Call un.DeleteAssocIfOwned
+    Push "Software\Classes\.cb7\shellex\{00021500-0000-0000-C000-000000000046}"
+    Call un.DeleteAssocIfOwned
+
+    ; Remove settings
+    DeleteRegKey HKCU "${PRODUCT_SETTINGS_KEY}"
+  ${EndIf}
 
   ; Remove shortcuts
   Delete "$SMPROGRAMS\${PRODUCT_NAME}\*.*"

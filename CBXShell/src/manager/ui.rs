@@ -59,6 +59,10 @@ pub struct CBXManagerApp {
     #[nwg_control(parent: tools_menu)]
     tools_separator: nwg::MenuSeparator,
 
+    #[nwg_control(parent: tools_menu, text: "Check for Updates")]
+    #[nwg_events(OnMenuItemSelected: [CBXManagerApp::on_check_for_updates])]
+    check_updates_menu: nwg::MenuItem,
+
     #[nwg_control(parent: tools_menu, text: "About")]
     #[nwg_events(OnMenuItemSelected: [CBXManagerApp::on_about])]
     about_menu: nwg::MenuItem,
@@ -396,10 +400,19 @@ impl CBXManagerApp {
         self.apply_settings();
     }
 
+    fn on_check_for_updates(&self) {
+        if let Err(e) = utils::spawn_update_check_now() {
+            utils::show_error("CBXShell Update Check Failed", &e.to_string());
+        }
+    }
+
     fn on_about(&self) {
         utils::show_success(
             "CBXShell Manager",
-            "CBXShell AVIF policy (v5.1.2)\n\nSupported AVIF path:\n- Windows WIC codec pipeline\n\nRequired codecs:\n- HEIF Image Extensions\n- AV1 Video Extension\n\nIf AVIF thumbnails fail, install/update both codecs and restart Explorer.\n\nNote: Software fallback may exist for compatibility, but support triage is based on the WIC path first.",
+            &format!(
+                "CBXShell AVIF policy (v{})\n\nSupported AVIF path:\n- Windows WIC codec pipeline\n\nRequired codecs:\n- HEIF Image Extensions\n- AV1 Video Extension\n\nIf AVIF thumbnails fail, install/update both codecs and restart Explorer.\n\nNote: Software fallback may exist for compatibility, but support triage is based on the WIC path first.",
+                env!("CARGO_PKG_VERSION")
+            ),
         );
     }
 
