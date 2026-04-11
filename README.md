@@ -188,7 +188,6 @@ CBXShell/
 │   ├── cbxshell-thumbnail-win/      # Thumbnail orchestration
 │   └── cbxshell-gui-win/            # Manager runtime
 ├── build_nsis.ps1                    # NSIS installer script
-├── build_chocolatey.ps1              # Optional Chocolatey packaging helper
 └── README.md
 ```
 
@@ -303,23 +302,6 @@ Create a standalone installer for direct distribution:
 
 **Requirements:**
 - [NSIS 3.x](https://nsis.sourceforge.io/Download) or later
-
-### Building a Chocolatey Package (Optional)
-
-GitHub Releases with NSIS installers are the primary supported distribution channel.
-Chocolatey packaging is optional release-ops work:
-
-```powershell
-# Build Chocolatey package (includes installers)
-.\build_chocolatey.ps1 -BuildInstallers
-
-# Output: dist\cbxshell-rs.<version>.nupkg
-```
-
-**Requirements:**
-- [Chocolatey CLI](https://chocolatey.org/install)
-- [NSIS 3.x](https://nsis.sourceforge.io/Download) or later
-
 
 ## License
 
