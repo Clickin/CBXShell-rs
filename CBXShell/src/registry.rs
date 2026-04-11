@@ -77,7 +77,9 @@ fn get_module_path() -> Result<String> {
         let len = GetModuleFileNameW(hmodule, &mut buffer);
 
         if len == 0 {
-            return Err(CbxError::Windows(windows::core::Error::from_win32()));
+            return Err(CbxError::Windows(
+                windows::core::Error::from_win32().to_string(),
+            ));
         }
 
         let path = String::from_utf16_lossy(&buffer[..len as usize]);
@@ -111,7 +113,7 @@ fn create_key(hkey: HKEY, subkey: &str) -> Result<HKEY> {
             &mut result_key,
             None,
         )
-        .map_err(|e| CbxError::Windows(e))?;
+        .map_err(|e| CbxError::Windows(e.to_string()))?;
 
         Ok(result_key)
     }
@@ -140,7 +142,7 @@ fn set_string_value(hkey: HKEY, value_name: Option<&str>, data: &str) -> Result<
             REG_SZ,
             Some(&data_bytes),
         )
-        .map_err(|e| CbxError::Windows(e))?;
+        .map_err(|e| CbxError::Windows(e.to_string()))?;
     }
 
     Ok(())

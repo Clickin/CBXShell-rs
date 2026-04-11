@@ -1,6 +1,5 @@
 ///! Error types for CBXShell
 use thiserror::Error;
-use windows::core::HRESULT;
 
 #[derive(Error, Debug)]
 pub enum CbxError {
@@ -14,7 +13,7 @@ pub enum CbxError {
     Io(#[from] std::io::Error),
 
     #[error("Windows error: {0}")]
-    Windows(#[from] windows::core::Error),
+    Windows(String),
 
     #[error("Registry error: {0}")]
     Registry(String),
@@ -27,17 +26,6 @@ pub enum CbxError {
 
     #[error("Invalid file path")]
     InvalidPath,
-}
-
-impl From<CbxError> for HRESULT {
-    fn from(err: CbxError) -> HRESULT {
-        match err {
-            CbxError::NoImageFound => windows::Win32::Foundation::E_FAIL,
-            CbxError::InvalidPath => windows::Win32::Foundation::E_INVALIDARG,
-            CbxError::Windows(e) => e.code(),
-            _ => windows::Win32::Foundation::E_FAIL,
-        }
-    }
 }
 
 pub type Result<T> = std::result::Result<T, CbxError>;

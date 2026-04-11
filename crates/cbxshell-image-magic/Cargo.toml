@@ -1,0 +1,11 @@
+[package]
+name = "cbxshell-image-magic"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cbxshell-core.workspace = true
+tracing.workspace = true

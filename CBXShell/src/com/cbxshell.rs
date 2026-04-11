@@ -418,7 +418,7 @@ impl IThumbnailProvider_Impl for CBXShell {
             Err(e) => {
                 tracing::error!("GetThumbnail failed: {}", e);
                 crate::utils::debug_log::debug_log(&format!("ERROR: GetThumbnail failed - {}", e));
-                let hresult: HRESULT = e.into();
+                let hresult = crate::hresult_from_cbx_error(&e);
                 crate::utils::debug_log::debug_log(&format!("Returning HRESULT: {:?}", hresult));
                 Err(Error::from(hresult))
             }

@@ -1,0 +1,17 @@
+[package]
+name = "cbxshell-thumbnail-win"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cbxshell-core.workspace = true
+cbxshell-image-codec.workspace = true
+cbxshell-image-resize.workspace = true
+cbxshell-bitmap-win.workspace = true
+windows.workspace = true
+
+[dev-dependencies]
+image.workspace = true

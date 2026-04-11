@@ -16,6 +16,9 @@ const IID_ITHUMBNAILPROVIDER: &str = "{E357FCCD-A995-4576-B01F-234630154E96}";
 
 /// IQueryInfo interface GUID (tooltips)
 const IID_IQUERYINFO: &str = "{00021500-0000-0000-C000-000000000046}";
+const APPROVED_KEY_PATH: &str =
+    "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
+const PROGID_KEY_PATH: &str = "Software\\Classes\\CBXShell.CBXShell.1";
 
 /// Read current application state from registry
 pub fn read_app_state() -> Result<AppState> {
@@ -214,11 +217,75 @@ fn write_sort_preview_setting(sort_enabled: bool) -> Result<()> {
     Ok(())
 }
 
-/// Register the DLL as a COM server
-///
-/// This function calls the library's register_server function directly.
-/// Since the binary and library are in the same crate but use different module roots,
-/// we need to access it through cbxshell:: path.
+fn register_shell_server(dll_path: &str) -> Result<()> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let clsid_path = format!("Software\\Classes\\CLSID\\{}", CLSID_STR);
+
+    let (clsid_key, _) = hkcu
+        .create_subkey(&clsid_path)
+        .context("Failed to create CLSID key")?;
+    clsid_key
+        .set_value("", &"CBXShell Class")
+        .context("Failed to set CLSID description")?;
+
+    let inproc_path = format!("{}\\InprocServer32", clsid_path);
+    let (inproc_key, _) = hkcu
+        .create_subkey(&inproc_path)
+        .context("Failed to create InprocServer32 key")?;
+    inproc_key
+        .set_value("", &dll_path)
+        .context("Failed to set DLL path")?;
+    inproc_key
+        .set_value("ThreadingModel", &"Apartment")
+        .context("Failed to set threading model")?;
+
+    let (approved_key, _) = hkcu
+        .create_subkey(APPROVED_KEY_PATH)
+        .context("Failed to create Approved key")?;
+    approved_key
+        .set_value(CLSID_STR, &"CBXShell Class")
+        .context("Failed to register Approved shell extension")?;
+
+    let (progid_key, _) = hkcu
+        .create_subkey(PROGID_KEY_PATH)
+        .context("Failed to create ProgID key")?;
+    progid_key
+        .set_value("", &"CBXShell Class")
+        .context("Failed to set ProgID description")?;
+
+    let (progid_clsid_key, _) = hkcu
+        .create_subkey(format!("{}\\CLSID", PROGID_KEY_PATH))
+        .context("Failed to create ProgID CLSID key")?;
+    progid_clsid_key
+        .set_value("", &CLSID_STR)
+        .context("Failed to set ProgID CLSID")?;
+
+    Ok(())
+}
+
+fn delete_tree_if_exists(root: &RegKey, path: &str) -> Result<()> {
+    match root.delete_subkey_all(path) {
+        Ok(()) => Ok(()),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(err).context(format!("Failed to delete registry tree {}", path)),
+    }
+}
+
+fn unregister_shell_server() -> Result<()> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+
+    if let Ok(approved_key) = hkcu.open_subkey_with_flags(APPROVED_KEY_PATH, KEY_SET_VALUE) {
+        let _ = approved_key.delete_value(CLSID_STR);
+    }
+
+    delete_tree_if_exists(&hkcu, &format!("Software\\Classes\\CLSID\\{}", CLSID_STR))?;
+    delete_tree_if_exists(&hkcu, PROGID_KEY_PATH)?;
+    delete_tree_if_exists(&hkcu, "Software\\Classes\\CBXShell.CBXShell")?;
+
+    Ok(())
+}
+
+/// Register the DLL as a COM server.
 pub fn register_dll() -> Result<()> {
     // Get the path to cbxshell.dll (should be in the same directory as the manager)
     let exe_path = std::env::current_exe().context("Failed to get current executable path")?;
@@ -240,14 +307,13 @@ pub fn register_dll() -> Result<()> {
         .to_str()
         .context("Failed to convert DLL path to string")?;
 
-    cbxshell::registry::register_server(Some(dll_path_str))
+    register_shell_server(dll_path_str)
         .map_err(|e| anyhow::anyhow!("DLL registration failed: {}", e))
 }
 
 /// Unregister the DLL as a COM server
 pub fn unregister_dll() -> Result<()> {
-    cbxshell::registry::unregister_server()
-        .map_err(|e| anyhow::anyhow!("DLL unregistration failed: {}", e))
+    unregister_shell_server().map_err(|e| anyhow::anyhow!("DLL unregistration failed: {}", e))
 }
 
 #[cfg(test)]

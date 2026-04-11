@@ -1,4 +1,3 @@
-use crate::utils::error::{CbxError, Result};
 ///! Shared utilities for archive processing
 ///!
 ///! Provides image detection, natural sorting, and common helpers
@@ -46,55 +45,6 @@ pub fn find_first_image<'a>(names: impl Iterator<Item = &'a str>, sort: bool) ->
     }
 
     images.first().map(|s| (*s).to_string())
-}
-
-/// Verify that extracted data is actually a valid image using magic headers
-///
-/// This provides a two-layer validation approach:
-/// 1. Extension-based filtering (fast, used during file listing)
-/// 2. Magic header verification (accurate, used after extraction)
-///
-/// This ensures we don't waste time trying to decode files that only
-/// have image extensions but aren't actually images (e.g., renamed files).
-///
-/// # Arguments
-/// * `data` - Extracted file data to verify
-/// * `filename` - Original filename (for error messages)
-///
-/// # Returns
-/// * `Ok(())` - Data is a valid image
-/// * `Err(CbxError)` - Data is not a valid image
-///
-/// # Examples
-/// ```ignore
-/// let data = archive.extract_entry(&entry)?;
-/// verify_image_data(&data, &entry.name)?;
-/// // Now safe to decode the image
-/// ```
-pub fn verify_image_data(data: &[u8], filename: &str) -> Result<()> {
-    use crate::image_processor::magic::verify_image_format;
-
-    match verify_image_format(data) {
-        Ok(format) => {
-            tracing::debug!(
-                "Verified image format for {}: {} (magic header check passed)",
-                filename,
-                format.as_str()
-            );
-            Ok(())
-        }
-        Err(e) => {
-            tracing::warn!(
-                "File {} has image extension but failed magic header verification: {}",
-                filename,
-                e
-            );
-            Err(CbxError::Image(format!(
-                "File '{}' appears to have wrong extension (not a valid image)",
-                filename
-            )))
-        }
-    }
 }
 
 #[cfg(test)]
@@ -169,35 +119,5 @@ mod tests {
     fn test_max_entry_size() {
         assert_eq!(MAX_ENTRY_SIZE, 33_554_432);
         assert_eq!(MAX_ENTRY_SIZE, 32 * 1024 * 1024);
-    }
-
-    #[test]
-    fn test_verify_image_data_valid_jpeg() {
-        // Minimal valid JPEG
-        let jpeg_data = &[0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46];
-        let result = verify_image_data(jpeg_data, "test.jpg");
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_verify_image_data_valid_png() {
-        // PNG signature
-        let png_data = &[0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
-        let result = verify_image_data(png_data, "test.png");
-        assert!(result.is_ok());
-    }
-
-    #[test]
-    fn test_verify_image_data_invalid() {
-        // Text file with .jpg extension (wrong extension)
-        let fake_data = b"This is not an image file";
-        let result = verify_image_data(fake_data, "fake.jpg");
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn test_verify_image_data_empty() {
-        let result = verify_image_data(&[], "empty.jpg");
-        assert!(result.is_err());
     }
 }

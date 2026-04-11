@@ -1,5 +1,17 @@
 [workspace]
-members = ["CBXShell"]
+members = [
+    "CBXShell",
+    "cbxmanager",
+    "crates/cbxshell-core",
+    "crates/cbxshell-archive",
+    "crates/cbxshell-image",
+    "crates/cbxshell-image-magic",
+    "crates/cbxshell-image-codec",
+    "crates/cbxshell-image-resize",
+    "crates/cbxshell-bitmap-win",
+    "crates/cbxshell-thumbnail-win",
+    "crates/cbxshell-gui-win",
+]
 resolver = "2"
 
 [workspace.package]
@@ -47,7 +59,7 @@ winreg = "0.52"
 widestring = "1.0"
 
 # GUI framework (for manager binary)
-native-windows-gui = "1.0.13"
+native-windows-gui = { version = "1.0.13", default-features = false }
 native-windows-derive = "1.0.3"
 
 # Error handling
@@ -57,6 +69,17 @@ thiserror = "1.0"
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Internal crates
+cbxshell-core = { path = "crates/cbxshell-core" }
+cbxshell-archive = { path = "crates/cbxshell-archive" }
+cbxshell-image = { path = "crates/cbxshell-image" }
+cbxshell-image-magic = { path = "crates/cbxshell-image-magic" }
+cbxshell-image-codec = { path = "crates/cbxshell-image-codec" }
+cbxshell-image-resize = { path = "crates/cbxshell-image-resize" }
+cbxshell-bitmap-win = { path = "crates/cbxshell-bitmap-win" }
+cbxshell-thumbnail-win = { path = "crates/cbxshell-thumbnail-win" }
+cbxshell-gui-win = { path = "crates/cbxshell-gui-win" }
 
 [profile.release]
 opt-level = 3

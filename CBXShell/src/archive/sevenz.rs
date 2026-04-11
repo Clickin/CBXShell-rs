@@ -214,7 +214,6 @@ impl Archive for SevenZipArchive {
 mod tests {
     use super::*;
     use sevenz_rust::SevenZWriter;
-    use std::io::Write;
     use tempfile::Builder;
 
     /// Create a test 7z archive on disk

@@ -4,18 +4,11 @@ use crate::utils::error::{CbxError, Result};
 ///! Supports ZIP, RAR, and 7z formats for comic book archives
 use std::path::Path;
 
-mod config;
 mod rar;
 mod sevenz;
 pub mod stream_reader;
 mod utils;
 mod zip;
-
-// Re-export utilities for internal use only (not used in public API)
-pub use config::should_sort_images;
-
-// Re-export image verification function (used by COM shell extension)
-pub use utils::verify_image_data;
 
 #[allow(dead_code)] // Used by open_archive function and part of public API
 pub use rar::RarArchive;

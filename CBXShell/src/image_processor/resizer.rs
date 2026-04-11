@@ -122,7 +122,27 @@ pub fn resize_image(
     filter: ResizeFilter,
 ) -> Result<RgbaImage> {
     let (src_width, src_height) = source.dimensions();
+    let resized = resize_rgba_image(
+        source.as_raw(),
+        src_width,
+        src_height,
+        target_width,
+        target_height,
+        filter,
+    )?;
 
+    RgbaImage::from_raw(target_width, target_height, resized)
+        .ok_or_else(|| CbxError::Image("Failed to create output image".to_string()))
+}
+
+pub fn resize_rgba_image(
+    source_rgba: &[u8],
+    src_width: u32,
+    src_height: u32,
+    target_width: u32,
+    target_height: u32,
+    filter: ResizeFilter,
+) -> Result<Vec<u8>> {
     // Validate dimensions
     if target_width == 0 || target_height == 0 {
         return Err(CbxError::Image(
@@ -132,14 +152,14 @@ pub fn resize_image(
 
     // If dimensions match, no resize needed
     if src_width == target_width && src_height == target_height {
-        return Ok(source.clone());
+        return Ok(source_rgba.to_vec());
     }
 
     // Create source image view for fast_image_resize
     let src_view = Image::from_vec_u8(
         src_width,
         src_height,
-        source.as_raw().to_vec(),
+        source_rgba.to_vec(),
         fr::PixelType::U8x4,
     )
     .map_err(|e| CbxError::Image(format!("Failed to create source view: {}", e)))?;
@@ -159,9 +179,7 @@ pub fn resize_image(
         )
         .map_err(|e| CbxError::Image(format!("Resize operation failed: {}", e)))?;
 
-    // Convert back to RgbaImage
-    RgbaImage::from_raw(target_width, target_height, dst_image.into_vec())
-        .ok_or_else(|| CbxError::Image("Failed to create output image".to_string()))
+    Ok(dst_image.into_vec())
 }
 
 #[cfg(test)]

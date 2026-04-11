@@ -8,18 +8,28 @@
 
 #![allow(non_snake_case)]
 
+pub use cbxshell_core::utils;
+use cbxshell_core::CbxError;
 use std::sync::atomic::{AtomicU32, Ordering};
 use windows::{core::*, Win32::Foundation::*};
 
-mod archive;
 pub mod com;
-mod image_processor;
 pub mod registry;
-mod utils;
+#[path = "archive/config.rs"]
+mod sort_config;
+
+pub mod archive {
+    pub use cbxshell_archive::*;
+    pub use cbxshell_image::verify_image_data;
+    pub use crate::sort_config::{set_should_sort_images, should_sort_images};
+}
+
+pub mod image_processor {
+    pub use cbxshell_image::*;
+}
 
 pub use com::CBXShell;
 pub use image_processor::thumbnail::create_thumbnail_with_size;
-pub use utils::error::CbxError;
 
 /// Global reference count for COM objects
 /// Used to determine when DLL can be safely unloaded
@@ -47,6 +57,14 @@ pub fn get_dll_ref_count() -> u32 {
 /// Get the DLL module handle
 pub fn get_dll_module() -> Option<HINSTANCE> {
     DLL_MODULE.get().copied()
+}
+
+pub(crate) fn hresult_from_cbx_error(err: &CbxError) -> HRESULT {
+    match err {
+        CbxError::InvalidPath => E_INVALIDARG,
+        CbxError::NoImageFound => E_FAIL,
+        _ => E_FAIL,
+    }
 }
 
 /// DllMain entry point

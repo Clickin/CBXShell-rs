@@ -1,0 +1,19 @@
+[package]
+name = "cbxshell-archive"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cbxshell-core.workspace = true
+zip.workspace = true
+unrar.workspace = true
+sevenz-rust.workspace = true
+natord.workspace = true
+tracing.workspace = true
+windows.workspace = true
+
+[dev-dependencies]
+tempfile = "3.8"

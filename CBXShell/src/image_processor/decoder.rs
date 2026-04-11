@@ -14,6 +14,39 @@ use std::io::Cursor;
 
 type Result<T> = std::result::Result<T, CbxError>;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DecodedRgbaImage {
+    width: u32,
+    height: u32,
+    pixels: Vec<u8>,
+}
+
+impl DecodedRgbaImage {
+    pub fn new(width: u32, height: u32, pixels: Vec<u8>) -> Self {
+        Self {
+            width,
+            height,
+            pixels,
+        }
+    }
+
+    pub fn width(&self) -> u32 {
+        self.width
+    }
+
+    pub fn height(&self) -> u32 {
+        self.height
+    }
+
+    pub fn into_pixels(self) -> Vec<u8> {
+        self.pixels
+    }
+
+    pub fn as_pixels(&self) -> &[u8] {
+        &self.pixels
+    }
+}
+
 /// Decode image from raw bytes
 ///
 /// This function attempts to automatically detect the image format and decode it.
@@ -33,6 +66,15 @@ type Result<T> = std::result::Result<T, CbxError>;
 /// println!("Image dimensions: {}x{}", img.width(), img.height());
 /// ```
 pub fn decode_image(data: &[u8]) -> Result<DynamicImage> {
+    let decoded = decode_rgba_image(data)?;
+    let image = ImageBuffer::from_raw(decoded.width, decoded.height, decoded.pixels).ok_or_else(
+        || CbxError::Image("Decoded image had unexpected pixel buffer size".to_string()),
+    )?;
+
+    Ok(DynamicImage::ImageRgba8(image))
+}
+
+pub fn decode_rgba_image(data: &[u8]) -> Result<DecodedRgbaImage> {
     if data.is_empty() {
         return Err(CbxError::Image("Empty image data".to_string()));
     }
@@ -59,20 +101,27 @@ pub fn decode_image(data: &[u8]) -> Result<DynamicImage> {
     decode_with_image_crate(data)
 }
 
-fn decode_with_image_crate(data: &[u8]) -> Result<DynamicImage> {
+fn decode_with_image_crate(data: &[u8]) -> Result<DecodedRgbaImage> {
     // Create a reader from the byte slice
     let reader = ImageReader::new(Cursor::new(data))
         .with_guessed_format()
         .map_err(|e| CbxError::Image(format!("Format detection failed: {}", e)))?;
 
     // Decode the image
-    reader
+    let decoded = reader
         .decode()
-        .map_err(|e| CbxError::Image(format!("Failed to decode image: {}", e)))
+        .map_err(|e| CbxError::Image(format!("Failed to decode image: {}", e)))?;
+
+    let rgba = decoded.to_rgba8();
+    Ok(DecodedRgbaImage::new(
+        rgba.width(),
+        rgba.height(),
+        rgba.into_raw(),
+    ))
 }
 
 #[cfg(target_os = "windows")]
-fn try_decode_with_wic(data: &[u8]) -> Result<Option<DynamicImage>> {
+fn try_decode_with_wic(data: &[u8]) -> Result<Option<DecodedRgbaImage>> {
     use windows::Win32::Graphics::Imaging::{
         CLSID_WICImagingFactory, GUID_WICPixelFormat32bppRGBA, IWICBitmapDecoder,
         IWICFormatConverter, IWICImagingFactory, WICBitmapDitherTypeNone,
@@ -188,11 +237,15 @@ fn try_decode_with_wic(data: &[u8]) -> Result<Option<DynamicImage>> {
 
     debug_log(&format!("WIC decode succeeded: {}x{}", width, height));
     tracing::debug!("Decoded image with WIC: {}x{}", width, height);
-    Ok(Some(DynamicImage::ImageRgba8(rgba)))
+    Ok(Some(DecodedRgbaImage::new(
+        rgba.width(),
+        rgba.height(),
+        rgba.into_raw(),
+    )))
 }
 
 #[cfg(not(target_os = "windows"))]
-fn try_decode_with_wic(_data: &[u8]) -> Result<Option<DynamicImage>> {
+fn try_decode_with_wic(_data: &[u8]) -> Result<Option<DecodedRgbaImage>> {
     Ok(None)
 }
 
@@ -232,7 +285,7 @@ mod tests {
 
     #[test]
     fn test_decode_jpeg() {
-        let result = decode_image(MINIMAL_JPEG);
+        let result = decode_rgba_image(MINIMAL_JPEG);
         assert!(result.is_ok(), "Failed to decode JPEG: {:?}", result.err());
 
         let img = result.unwrap();
@@ -242,7 +295,7 @@ mod tests {
 
     #[test]
     fn test_decode_png() {
-        let result = decode_image(MINIMAL_PNG);
+        let result = decode_rgba_image(MINIMAL_PNG);
         assert!(result.is_ok(), "Failed to decode PNG: {:?}", result.err());
 
         let img = result.unwrap();
@@ -252,7 +305,7 @@ mod tests {
 
     #[test]
     fn test_decode_empty_data() {
-        let result = decode_image(&[]);
+        let result = decode_rgba_image(&[]);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), CbxError::Image(_)));
     }
@@ -260,7 +313,7 @@ mod tests {
     #[test]
     fn test_decode_corrupt_data() {
         let corrupt = vec![0xFF, 0x00, 0x12, 0x34, 0x56, 0x78, 0x9A, 0xBC];
-        let result = decode_image(&corrupt);
+        let result = decode_rgba_image(&corrupt);
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), CbxError::Image(_)));
     }
@@ -269,7 +322,7 @@ mod tests {
     fn test_decode_partial_data() {
         // Only JPEG signature, no actual image data
         let partial = vec![0xFF, 0xD8, 0xFF, 0xE0];
-        let result = decode_image(&partial);
+        let result = decode_rgba_image(&partial);
         assert!(result.is_err());
     }
 
@@ -277,7 +330,7 @@ mod tests {
     fn test_decode_wrong_format() {
         // This is not an image file, just random bytes
         let not_image = b"This is not an image file content";
-        let result = decode_image(not_image);
+        let result = decode_rgba_image(not_image);
         assert!(result.is_err());
     }
 }

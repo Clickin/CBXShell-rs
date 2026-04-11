@@ -145,10 +145,13 @@ pub fn create_hbitmap_from_bgra(bgra_data: &[u8], width: u32, height: u32) -> Re
             &mut pv_bits,   // Pointer to bits
             None,           // File mapping object (NULL)
             0,              // Offset in file mapping
-        )?; // Use ? to propagate the Result
+        )
+        .map_err(|e| CbxError::Windows(e.to_string()))?;
 
         if hbitmap.is_invalid() || hbitmap.0 == 0 {
-            return Err(CbxError::Windows(windows::core::Error::from_win32()));
+            return Err(CbxError::Windows(
+                windows::core::Error::from_win32().to_string(),
+            ));
         }
 
         if pv_bits.is_null() {

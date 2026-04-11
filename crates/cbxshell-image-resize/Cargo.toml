@@ -1,0 +1,13 @@
+[package]
+name = "cbxshell-image-resize"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+cbxshell-core.workspace = true
+image.workspace = true
+fast_image_resize.workspace = true
+

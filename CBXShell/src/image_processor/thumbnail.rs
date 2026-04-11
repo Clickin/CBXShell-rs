@@ -11,7 +11,6 @@
 //! This matches the C++ implementation in cbxArchive.h:628-666 (OnExtract).
 
 use crate::utils::error::CbxError;
-use image::{GenericImageView, RgbaImage};
 use windows::Win32::Graphics::Gdi::HBITMAP;
 
 use super::decoder;
@@ -108,7 +107,7 @@ pub fn create_thumbnail(image_data: &[u8], config: ThumbnailConfig) -> Result<HB
         "Decoding image from {} bytes...",
         image_data.len()
     ));
-    let img = match decoder::decode_image(image_data) {
+    let decoded = match decoder::decode_rgba_image(image_data) {
         Ok(img) => {
             crate::utils::debug_log::debug_log(&format!(
                 "Image decoded successfully: {}x{}",
@@ -142,7 +141,8 @@ pub fn create_thumbnail(image_data: &[u8], config: ThumbnailConfig) -> Result<HB
     };
 
     // Step 2: Calculate target thumbnail size
-    let (src_width, src_height) = img.dimensions();
+    let src_width = decoded.width();
+    let src_height = decoded.height();
     let (target_width, target_height) = resizer::calculate_thumbnail_size(
         src_width,
         src_height,
@@ -157,12 +157,19 @@ pub fn create_thumbnail(image_data: &[u8], config: ThumbnailConfig) -> Result<HB
         ));
     }
 
-    // Step 3: Convert to RGBA format
-    let mut rgba = img.to_rgba8();
+    // Step 3: Work on raw RGBA pixels returned by the decoder boundary.
+    let mut rgba = decoded.into_pixels();
 
     // Step 4: Resize if dimensions changed
     if (target_width, target_height) != (src_width, src_height) {
-        rgba = resizer::resize_image(&rgba, target_width, target_height, config.resize_filter)?;
+        rgba = resizer::resize_rgba_image(
+            &rgba,
+            src_width,
+            src_height,
+            target_width,
+            target_height,
+            config.resize_filter,
+        )?;
     }
 
     // Step 5: Apply white background for transparency (C++ behavior)
@@ -171,7 +178,7 @@ pub fn create_thumbnail(image_data: &[u8], config: ThumbnailConfig) -> Result<HB
     apply_background(&mut rgba, config.background_color);
 
     // Step 6: Convert RGBA to BGRA (Windows format)
-    let bgra = hbitmap::rgba_to_bgra(rgba.as_raw());
+    let bgra = hbitmap::rgba_to_bgra(&rgba);
 
     // Step 7: Create Windows HBITMAP
     hbitmap::create_hbitmap_from_bgra(&bgra, target_width, target_height)
@@ -200,8 +207,8 @@ pub fn create_thumbnail(image_data: &[u8], config: ThumbnailConfig) -> Result<HB
 /// FillRect(hdcDest, &rcDest, hBrush);
 /// DeleteObject(hBrush);
 /// ```
-fn apply_background(rgba: &mut RgbaImage, bg: (u8, u8, u8, u8)) {
-    for pixel in rgba.pixels_mut() {
+fn apply_background(rgba: &mut [u8], bg: (u8, u8, u8, u8)) {
+    for pixel in rgba.chunks_exact_mut(4) {
         let alpha = pixel[3] as f32 / 255.0;
 
         if alpha < 1.0 {
@@ -245,6 +252,7 @@ pub fn create_thumbnail_with_size(
 mod tests {
     use super::*;
     use image::Rgba;
+    use image::RgbaImage;
     use windows::Win32::Graphics::Gdi::DeleteObject;
 
     /// Minimal valid JPEG (1x1 red pixel)
