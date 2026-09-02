@@ -6,10 +6,7 @@ use windows::Win32::UI::WindowsAndMessaging::{
 };
 use windows::Win32::{
     Foundation::HWND,
-    UI::{
-        Shell::ShellExecuteW,
-        WindowsAndMessaging::SW_SHOWNORMAL,
-    },
+    UI::{Shell::ShellExecuteW, WindowsAndMessaging::SW_SHOWNORMAL},
 };
 
 /// Prompt user to restart Explorer to apply changes
@@ -100,9 +97,7 @@ pub fn prompt_open_release(current_version: &str, latest_version: &str) -> bool 
         current_version, latest_version
     )
     .replace('\n', "\r\n");
-    let message = format!("{}\0", message)
-        .encode_utf16()
-        .collect::<Vec<_>>();
+    let message = format!("{}\0", message).encode_utf16().collect::<Vec<_>>();
 
     unsafe {
         MessageBoxW(

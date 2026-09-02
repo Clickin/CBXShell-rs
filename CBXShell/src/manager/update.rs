@@ -1,13 +1,14 @@
 use anyhow::Result;
-use std::{ffi::c_void, mem::ManuallyDrop, path::{Path, PathBuf}, ptr};
 use std::time::{Duration, SystemTime};
+use std::{
+    ffi::c_void,
+    mem::ManuallyDrop,
+    path::{Path, PathBuf},
+    ptr,
+};
 use windows::{
     core::{ComInterface, GUID, HSTRING, PCWSTR, PWSTR},
-    Data::{
-        Json::JsonObject,
-        Xml::Dom::XmlDocument,
-    },
-    UI::Notifications::{ToastNotification, ToastNotificationManager},
+    Data::{Json::JsonObject, Xml::Dom::XmlDocument},
     Win32::{
         Networking::WinHttp::{
             WinHttpCloseHandle, WinHttpConnect, WinHttpOpen, WinHttpOpenRequest,
@@ -18,17 +19,22 @@ use windows::{
         System::{
             Com::{
                 CoCreateInstance, CoInitializeEx, CoTaskMemAlloc, CoTaskMemFree, CoUninitialize,
-                StructuredStorage::{PROPVARIANT, PROPVARIANT_0, PROPVARIANT_0_0, PROPVARIANT_0_0_0, PropVariantClear},
                 IPersistFile,
+                StructuredStorage::{
+                    PropVariantClear, PROPVARIANT, PROPVARIANT_0, PROPVARIANT_0_0,
+                    PROPVARIANT_0_0_0,
+                },
                 CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED,
             },
             Variant::{VARENUM, VT_LPWSTR},
         },
         UI::Shell::{
+            FOLDERID_Programs, IShellLinkW,
             PropertiesSystem::{IPropertyStore, PROPERTYKEY},
-            IShellLinkW, ShellLink, FOLDERID_Programs, KNOWN_FOLDER_FLAG, SHGetKnownFolderPath,
+            SHGetKnownFolderPath, ShellLink, KNOWN_FOLDER_FLAG,
         },
     },
+    UI::Notifications::{ToastNotification, ToastNotificationManager},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -193,11 +199,7 @@ pub fn is_newer_release(current_version: &str, release_tag: &str) -> bool {
     false
 }
 
-pub fn should_skip_background_check(
-    cache: &UpdateCache,
-    now: SystemTime,
-    ttl: Duration,
-) -> bool {
+pub fn should_skip_background_check(cache: &UpdateCache, now: SystemTime, ttl: Duration) -> bool {
     let Some(last_checked_at) = cache.last_checked_at else {
         return false;
     };
@@ -346,7 +348,9 @@ pub fn cache_from_json(body: &str) -> Result<UpdateCache> {
         if value.ValueType()? == windows::Data::Json::JsonValueType::Null {
             return Ok(None);
         }
-        Ok(Some(json.GetNamedString(&HSTRING::from(name))?.to_string_lossy()))
+        Ok(Some(
+            json.GetNamedString(&HSTRING::from(name))?.to_string_lossy(),
+        ))
     };
 
     let last_checked_at = if !json.HasKey(&HSTRING::from("last_checked_at"))? {
@@ -546,7 +550,8 @@ fn fetch_release_response_body() -> Result<String> {
             body.extend_from_slice(&buffer[..bytes_read as usize]);
         }
 
-        Ok(String::from_utf8(body).map_err(|e| anyhow::anyhow!("GitHub API response was not UTF-8: {}", e))?)
+        Ok(String::from_utf8(body)
+            .map_err(|e| anyhow::anyhow!("GitHub API response was not UTF-8: {}", e))?)
     }
 }
 
@@ -563,7 +568,8 @@ fn show_update_toast(release: &ReleaseInfo) -> Result<()> {
     document.LoadXml(&HSTRING::from(toast_xml))?;
     let toast = ToastNotification::CreateToastNotification(&document)?;
     toast.SetTag(&HSTRING::from(TOAST_TAG))?;
-    let notifier = ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_USER_MODEL_ID))?;
+    let notifier =
+        ToastNotificationManager::CreateToastNotifierWithId(&HSTRING::from(APP_USER_MODEL_ID))?;
     notifier.Show(&toast)?;
     Ok(())
 }
@@ -580,8 +586,7 @@ fn ensure_start_menu_shortcut() -> Result<()> {
     let description = to_utf16("CBXShell Manager");
 
     unsafe {
-        let shell_link: IShellLinkW =
-            CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)?;
+        let shell_link: IShellLinkW = CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)?;
         shell_link.SetPath(PCWSTR(current_exe_wide.as_ptr()))?;
         shell_link.SetDescription(PCWSTR(description.as_ptr()))?;
 
@@ -614,7 +619,9 @@ fn propvariant_from_string(value: &str) -> Result<PROPVARIANT> {
     unsafe {
         let allocation = CoTaskMemAlloc(wide.len() * std::mem::size_of::<u16>());
         if allocation.is_null() {
-            return Err(anyhow::anyhow!("CoTaskMemAlloc failed for PROPVARIANT string"));
+            return Err(anyhow::anyhow!(
+                "CoTaskMemAlloc failed for PROPVARIANT string"
+            ));
         }
         ptr::copy_nonoverlapping(wide.as_ptr(), allocation.cast::<u16>(), wide.len());
         wide.fill(0);
@@ -763,7 +770,10 @@ mod tests {
             UpdateCheckMode::Background,
         );
 
-        assert_eq!(status, UpdateCheckStatus::Failed("network down".to_string()));
+        assert_eq!(
+            status,
+            UpdateCheckStatus::Failed("network down".to_string())
+        );
         assert_eq!(updated_cache.latest_version.as_deref(), Some("5.2.1"));
         assert_eq!(
             updated_cache.latest_release_url.as_deref(),
