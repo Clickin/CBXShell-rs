@@ -30,6 +30,10 @@ const MAX_CACHE_GIB_VALUE: &str = "MaxCacheGiB";
 /// Used by `read_max_cache_gib` as fallback and by the GUI for display.
 pub(crate) const DEFAULT_MAX_CACHE_GIB: u32 = 8;
 
+/// Registry value holding the logical cache generation. Must match the
+/// value the COM side reads (`CBXShell/src/com/l2_cache.rs`, default 0).
+const CACHE_GENERATION_VALUE: &str = "CacheGeneration";
+
 /// Stored value unit rationale: the UI offers up to 32 GiB, which overflows
 /// a REG_DWORD when expressed in bytes (u32 max is 4 GiB). A QWORD byte
 /// count would work, but GiB units keep the stored value human-readable in
@@ -79,6 +83,36 @@ fn limits_from_gib(gib: u32) -> CacheLimits {
 /// [`CacheLimits`] for the currently configured limit.
 fn cache_limits() -> CacheLimits {
     limits_from_gib(read_max_cache_gib().unwrap_or(DEFAULT_MAX_CACHE_GIB))
+}
+
+/// Next generation value. Saturating on purpose: a wrap-around would make
+/// bumped generations collide with long-dead ones, and plan section 18
+/// (Phase 8 acceptance) requires previous generations to stay unreachable.
+fn next_generation(prev: u32) -> u32 {
+    prev.saturating_add(1)
+}
+
+/// Bump the global logical cache generation (plan sections 5.4 and 13.3).
+///
+/// Every existing L2 entry becomes stale immediately, because variant IDs
+/// embed the generation, without synchronously deleting a multi-gigabyte
+/// directory; old-generation files are reclaimed later by background
+/// maintenance. Meant for explicit "invalidate entire cache" scope only —
+/// a folder-scope regeneration invalidates per source instead.
+///
+/// # Errors
+///
+/// Propagates registry failures.
+pub fn increment_cache_generation() -> Result<u64> {
+    let hkcu = RegKey::predef(HKEY_CURRENT_USER);
+    let (key, _) = hkcu
+        .create_subkey(CONFIG_KEY_PATH)
+        .context("Failed to create config key")?;
+    let prev = key.get_value::<u32, _>(CACHE_GENERATION_VALUE).unwrap_or(0);
+    let next = next_generation(prev);
+    key.set_value(CACHE_GENERATION_VALUE, &next)
+        .context("Failed to set CacheGeneration value")?;
+    Ok(u64::from(next))
 }
 
 /// Approximate cache size and entry count plus the cache root for display
@@ -154,6 +188,17 @@ pub(crate) fn format_count(value: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::limits_from_gib;
+
+    #[test]
+    fn next_generation_increments() {
+        assert_eq!(super::next_generation(0), 1);
+        assert_eq!(super::next_generation(6), 7);
+    }
+
+    #[test]
+    fn next_generation_saturates_at_u32_max() {
+        assert_eq!(super::next_generation(u32::MAX), u32::MAX);
+    }
 
     #[test]
     fn zero_gib_maps_to_unlimited() {

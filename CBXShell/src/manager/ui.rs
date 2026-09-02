@@ -1,7 +1,7 @@
 ///! Native-windows-gui based UI for CBXManager
 ///!
 ///! Compact, professional interface with proper alignment and spacing
-use super::{cache_ops, registry_ops, state::AppState, utils};
+use super::{cache_ops, cache_regenerate, registry_ops, state::AppState, utils};
 use native_windows_derive as nwd;
 use native_windows_gui as nwg;
 use native_windows_gui::NativeUi;
@@ -72,6 +72,10 @@ pub struct CBXManagerApp {
     #[nwg_control(parent: tools_menu, text: "Thumbnail Cache...")]
     #[nwg_events(OnMenuItemSelected: [CBXManagerApp::on_thumbnail_cache])]
     thumbnail_cache_menu: nwg::MenuItem,
+
+    #[nwg_control(parent: tools_menu, text: "Regenerate Thumbnails...")]
+    #[nwg_events(OnMenuItemSelected: [CBXManagerApp::on_regenerate_thumbnails])]
+    regenerate_menu: nwg::MenuItem,
 
     #[nwg_control(parent: tools_menu)]
     tools_separator_about: nwg::MenuSeparator,
@@ -419,6 +423,12 @@ impl CBXManagerApp {
     fn on_check_for_updates(&self) {
         if let Err(e) = utils::spawn_update_check_now() {
             utils::show_error("CBXShell Update Check Failed", &e.to_string());
+        }
+    }
+
+    fn on_regenerate_thumbnails(&self) {
+        if let Err(e) = cache_regenerate::open_regen_dialog() {
+            utils::show_error("Regenerate Thumbnails", &e.to_string());
         }
     }
 
