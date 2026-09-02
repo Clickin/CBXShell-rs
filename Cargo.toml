@@ -10,6 +10,7 @@ members = [
     "crates/cbxshell-image-resize",
     "crates/cbxshell-bitmap-win",
     "crates/cbxshell-thumbnail-win",
+    "crates/cbxshell-thumbnail-cache",
     "crates/cbxshell-gui-win",
 ]
 resolver = "2"
@@ -63,6 +64,7 @@ fast_image_resize = "4.0"
 natord = "1.0"
 winreg = "0.52"
 widestring = "1.0"
+sha2 = "0.10"
 
 # GUI framework (for manager binary)
 native-windows-gui = { version = "1.0.13", default-features = false }
@@ -85,6 +87,7 @@ cbxshell-image-codec = { path = "crates/cbxshell-image-codec" }
 cbxshell-image-resize = { path = "crates/cbxshell-image-resize" }
 cbxshell-bitmap-win = { path = "crates/cbxshell-bitmap-win" }
 cbxshell-thumbnail-win = { path = "crates/cbxshell-thumbnail-win" }
+cbxshell-thumbnail-cache = { path = "crates/cbxshell-thumbnail-cache" }
 cbxshell-gui-win = { path = "crates/cbxshell-gui-win" }
 
 [profile.release]
