@@ -68,19 +68,7 @@ impl ThumbnailCache {
         let mut skipped = 0u64;
         collect_files(self.root(), 0, &mut files, &mut skipped);
 
-        let entry_bytes = |files: &[ScannedFile]| -> u64 {
-            files
-                .iter()
-                .filter(|f| f.kind == FileKind::Entry)
-                .map(|f| f.size)
-                .sum()
-        };
-
-        let mut report = MaintenanceReport {
-            entries: files.iter().filter(|f| f.kind == FileKind::Entry).count() as u64,
-            skipped,
-            ..MaintenanceReport::default()
-        };
+        let mut report = summarize(&files, skipped);
 
         // 1. Stale temporary files.
         let now_secs = SystemTime::now()
@@ -119,6 +107,38 @@ impl ThumbnailCache {
 
         Ok(report)
     }
+
+    /// Scan-only counterpart of [`ThumbnailCache::maintenance`] for the
+    /// manager GUI (plan section 12.1): reports `entries`, `total_bytes`
+    /// and `skipped` and deletes NOTHING. The counting rules are identical
+    /// to `maintenance`; stale `.tmp` files and stray files are ignored
+    /// (treated like `FileKind::Other`) and left in place.
+    pub fn stats(&self) -> Result<MaintenanceReport> {
+        let mut files = Vec::new();
+        let mut skipped = 0u64;
+        collect_files(self.root(), 0, &mut files, &mut skipped);
+        Ok(summarize(&files, skipped))
+    }
+}
+
+/// Published-entry statistics shared by [`ThumbnailCache::maintenance`]
+/// and [`ThumbnailCache::stats`].
+fn summarize(files: &[ScannedFile], skipped: u64) -> MaintenanceReport {
+    MaintenanceReport {
+        entries: files.iter().filter(|f| f.kind == FileKind::Entry).count() as u64,
+        total_bytes: entry_bytes(files),
+        skipped,
+        ..MaintenanceReport::default()
+    }
+}
+
+/// Sum of the sizes of published `.webp` entries.
+fn entry_bytes(files: &[ScannedFile]) -> u64 {
+    files
+        .iter()
+        .filter(|f| f.kind == FileKind::Entry)
+        .map(|f| f.size)
+        .sum()
 }
 
 /// Delete `file`, folding the outcome into the report. Returns whether the
@@ -393,5 +413,67 @@ mod tests {
 
         assert_eq!(report.entries, 1);
         assert_eq!(report.deleted_files, 0);
+    }
+
+    #[test]
+    fn stats_on_missing_root_is_empty_report() {
+        let root = TempDir::new().unwrap();
+        let cache = ThumbnailCache::new(root.path().join("missing"));
+
+        let report = cache.stats().unwrap();
+        assert_eq!(report, MaintenanceReport::default());
+    }
+
+    #[test]
+    fn stats_counts_entries_and_bytes_without_deleting() {
+        let root = TempDir::new().unwrap();
+        let cache = ThumbnailCache::new(root.path().to_path_buf());
+
+        let first = put_entry(&cache, &[0x0041], 1_700_000_000);
+        let second = put_entry(&cache, &[0x0042], 1_700_003_600);
+
+        let report = cache.stats().unwrap();
+
+        assert_eq!(report.entries, 2);
+        assert_eq!(report.total_bytes, 200);
+        assert_eq!(report.deleted_files, 0);
+        assert_eq!(report.deleted_bytes, 0);
+        assert_eq!(report.skipped, 0);
+        // Scan-only: both entries still load afterwards.
+        assert_eq!(
+            cache.load(&first.0, &first.1).unwrap().as_deref(),
+            Some(&[b'x'; 100][..])
+        );
+        assert_eq!(
+            cache.load(&second.0, &second.1).unwrap().as_deref(),
+            Some(&[b'x'; 100][..])
+        );
+    }
+
+    #[test]
+    fn stats_leaves_stale_temp_files_in_place() {
+        let root = TempDir::new().unwrap();
+        let cache = ThumbnailCache::new(root.path().to_path_buf());
+        let source = source(&[0x0041]);
+        cache.store(&source, &variant(), b"entry").unwrap();
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as i64;
+        let stale = cache.source_dir(&source).join("abc.pid.1.tmp");
+        fs::write(&stale, b"abandoned").unwrap();
+        set_mtime(&stale, now - 2 * 60 * 60);
+
+        let report = cache.stats().unwrap();
+
+        // Unlike maintenance, stats never deletes: the abandoned temp file
+        // is ignored like any other non-entry file and skipped counting
+        // stays identical to maintenance.
+        assert!(stale.exists());
+        assert_eq!(report.entries, 1);
+        assert_eq!(report.total_bytes, 5);
+        assert_eq!(report.deleted_files, 0);
+        assert_eq!(report.skipped, 0);
     }
 }

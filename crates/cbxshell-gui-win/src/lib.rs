@@ -13,6 +13,7 @@ enum AppCommand {
     Gui,
     BackgroundCheck,
     ManualCheck,
+    CacheMaintenance,
     OpenReleaseUrl(String),
 }
 
@@ -28,6 +29,7 @@ where
         None => Ok(AppCommand::Gui),
         Some("--check-updates-background") => Ok(AppCommand::BackgroundCheck),
         Some("--check-updates-now") => Ok(AppCommand::ManualCheck),
+        Some("--cache-maintenance") => Ok(AppCommand::CacheMaintenance),
         Some("--open-release-url") => {
             let url = args
                 .next()
@@ -42,8 +44,16 @@ pub fn run() -> AppResult {
     let command = parse_command(std::env::args())?;
     match command {
         AppCommand::Gui => run_gui(),
-        AppCommand::BackgroundCheck => manager::update::run_background_check(),
+        AppCommand::BackgroundCheck => {
+            let result = manager::update::run_background_check();
+            // Plan section 11.3: piggyback cache maintenance onto the
+            // per-login background run. Best-effort by contract — errors
+            // are swallowed and never block or notify.
+            let _ = manager::cache_ops::run_maintenance();
+            result
+        }
         AppCommand::ManualCheck => manager::update::run_manual_check(),
+        AppCommand::CacheMaintenance => manager::cache_ops::run_maintenance().map(|_| ()),
         AppCommand::OpenReleaseUrl(url) => manager::utils::open_url(&url),
     }
 }
@@ -78,8 +88,8 @@ mod tests {
 
     #[test]
     fn parses_manual_mode() {
-        let command =
-            parse_command(["CBXManager.exe", "--check-updates-now"]).expect("manual mode should parse");
+        let command = parse_command(["CBXManager.exe", "--check-updates-now"])
+            .expect("manual mode should parse");
         assert_eq!(command, AppCommand::ManualCheck);
     }
 
@@ -97,5 +107,17 @@ mod tests {
                 "https://github.com/Clickin/CBXShell-rs/releases/tag/v5.2.0".to_string()
             )
         );
+    }
+
+    #[test]
+    fn parses_cache_maintenance_mode() {
+        let command = parse_command(["CBXManager.exe", "--cache-maintenance"])
+            .expect("cache maintenance mode should parse");
+        assert_eq!(command, AppCommand::CacheMaintenance);
+    }
+
+    #[test]
+    fn unknown_mode_still_fails() {
+        assert!(parse_command(["CBXManager.exe", "--bogus"]).is_err());
     }
 }

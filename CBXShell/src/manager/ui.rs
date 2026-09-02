@@ -1,11 +1,14 @@
 ///! Native-windows-gui based UI for CBXManager
 ///!
 ///! Compact, professional interface with proper alignment and spacing
-use super::{registry_ops, state::AppState, utils};
+use super::{cache_ops, registry_ops, state::AppState, utils};
 use native_windows_derive as nwd;
 use native_windows_gui as nwg;
+use native_windows_gui::NativeUi;
 use nwd::NwgUi;
 use std::cell::{Cell, RefCell};
+
+use self::c_b_x_cache_dialog_ui::CBXCacheDialogUi;
 
 const WINDOW_WIDTH: i32 = 360;
 const WINDOW_HEIGHT: i32 = 370;
@@ -62,6 +65,16 @@ pub struct CBXManagerApp {
     #[nwg_control(parent: tools_menu, text: "Check for Updates")]
     #[nwg_events(OnMenuItemSelected: [CBXManagerApp::on_check_for_updates])]
     check_updates_menu: nwg::MenuItem,
+
+    #[nwg_control(parent: tools_menu)]
+    tools_separator_cache: nwg::MenuSeparator,
+
+    #[nwg_control(parent: tools_menu, text: "Thumbnail Cache...")]
+    #[nwg_events(OnMenuItemSelected: [CBXManagerApp::on_thumbnail_cache])]
+    thumbnail_cache_menu: nwg::MenuItem,
+
+    #[nwg_control(parent: tools_menu)]
+    tools_separator_about: nwg::MenuSeparator,
 
     #[nwg_control(parent: tools_menu, text: "About")]
     #[nwg_events(OnMenuItemSelected: [CBXManagerApp::on_about])]
@@ -361,7 +374,10 @@ impl CBXManagerApp {
                 let mut state = self.build_state_from_controls();
                 state.dll_registered = true;
                 if let Err(e) = registry_ops::write_app_state(&state) {
-                    eprintln!("Failed to apply extension handlers after DLL registration: {}", e);
+                    eprintln!(
+                        "Failed to apply extension handlers after DLL registration: {}",
+                        e
+                    );
                 }
                 self.initialize_state();
                 self.set_needs_restart(true);
@@ -406,6 +422,12 @@ impl CBXManagerApp {
         }
     }
 
+    fn on_thumbnail_cache(&self) {
+        if let Err(e) = open_thumbnail_cache_dialog() {
+            utils::show_error("Thumbnail Cache", &e.to_string());
+        }
+    }
+
     fn on_about(&self) {
         utils::show_success(
             "CBXShell Manager",
@@ -430,5 +452,193 @@ impl CBXManagerApp {
 
     fn set_needs_restart(&self, value: bool) {
         NEEDS_RESTART.with(|flag| flag.set(value));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Thumbnail Cache dialog (plan section 12.1)
+// ---------------------------------------------------------------------------
+
+/// GiB value for each "Maximum cache size" combo choice; `0` = Unlimited.
+/// Order matches the combo collection and plan section 11.1.
+const LIMIT_CHOICES_GIB: [u32; 6] = [2, 4, 8, 16, 32, 0];
+
+thread_local! {
+    /// Keeps the built dialog alive. nwg windows hide instead of closing,
+    /// so an existing dialog is re-shown and refreshed on reopen.
+    static CACHE_DIALOG: RefCell<Option<CBXCacheDialogUi>> = const { RefCell::new(None) };
+}
+
+/// Show (building on first use) the Thumbnail Cache dialog and refresh its
+/// stats. The stats scan is synchronous on the UI thread: acceptable for
+/// typical cache trees, at the cost of a blocked message pump during the
+/// walk.
+///
+/// # Errors
+///
+/// Propagates control creation, registry, or scan failures.
+pub fn open_thumbnail_cache_dialog() -> anyhow::Result<()> {
+    CACHE_DIALOG.with(|slot| {
+        let mut slot = slot.borrow_mut();
+        if let Some(dialog) = slot.as_ref() {
+            dialog.window.set_visible(true);
+            dialog.refresh_stats()?;
+            return Ok(());
+        }
+        let dialog = CBXCacheDialog::build_ui(Default::default())?;
+        dialog.apply_font();
+        dialog.sync_limit_control()?;
+        dialog.refresh_stats()?;
+        *slot = Some(dialog);
+        Ok(())
+    })
+}
+
+#[derive(Default, NwgUi)]
+pub struct CBXCacheDialog {
+    #[nwg_control(
+        size: (390, 280),
+        position: (320, 320),
+        title: "Thumbnail Cache",
+        flags: "WINDOW|VISIBLE"
+    )]
+    window: nwg::Window,
+
+    #[nwg_resource(family: "Segoe UI", size: 16)]
+    ui_font: nwg::Font,
+
+    #[nwg_control(parent: window, text: "Location", position: (12, 12), size: (120, 20))]
+    location_caption: nwg::Label,
+
+    #[nwg_control(parent: window, text: "", position: (12, 32), size: (366, 20))]
+    location_value: nwg::Label,
+
+    #[nwg_control(parent: window, text: "Size", position: (12, 60), size: (120, 20))]
+    size_caption: nwg::Label,
+
+    #[nwg_control(parent: window, text: "", position: (12, 80), size: (366, 20))]
+    size_value: nwg::Label,
+
+    #[nwg_control(parent: window, text: "Entries", position: (12, 108), size: (120, 20))]
+    entries_caption: nwg::Label,
+
+    #[nwg_control(parent: window, text: "", position: (12, 128), size: (366, 20))]
+    entries_value: nwg::Label,
+
+    #[nwg_control(
+        parent: window,
+        text: "Maximum cache size",
+        position: (12, 158),
+        size: (160, 20)
+    )]
+    limit_caption: nwg::Label,
+
+    #[nwg_control(
+        parent: window,
+        position: (12, 178),
+        size: (130, 24),
+        collection: vec!["2 GB", "4 GB", "8 GB", "16 GB", "32 GB", "Unlimited"]
+    )]
+    #[nwg_events(OnComboxBoxSelection: [CBXCacheDialog::on_limit_changed])]
+    limit_combo: nwg::ComboBox<&'static str>,
+
+    #[nwg_control(
+        parent: window,
+        text: "Clear CBXShell Cache",
+        position: (12, 212),
+        size: (170, 26)
+    )]
+    #[nwg_events(OnButtonClick: [CBXCacheDialog::on_clear_cache])]
+    clear_button: nwg::Button,
+}
+
+impl CBXCacheDialog {
+    fn apply_font(&self) {
+        let font = Some(&self.ui_font);
+        self.location_caption.set_font(font);
+        self.location_value.set_font(font);
+        self.size_caption.set_font(font);
+        self.size_value.set_font(font);
+        self.entries_caption.set_font(font);
+        self.entries_value.set_font(font);
+        self.limit_caption.set_font(font);
+        self.limit_combo.set_font(font);
+        self.clear_button.set_font(font);
+    }
+
+    /// Select the combo entry matching the stored limit (plan default 8 GB).
+    fn sync_limit_control(&self) -> anyhow::Result<()> {
+        let gib = cache_ops::read_max_cache_gib()?;
+        let index = LIMIT_CHOICES_GIB
+            .iter()
+            .position(|choice| *choice == gib)
+            .unwrap_or(2);
+        self.limit_combo.set_selection(Some(index));
+        Ok(())
+    }
+
+    /// Reload the stats lines from a fresh scan. Synchronous; see
+    /// [`open_thumbnail_cache_dialog`] for the tradeoff.
+    fn refresh_stats(&self) -> anyhow::Result<()> {
+        let (report, root) = cache_ops::collect_stats()?;
+        self.location_value.set_text(&root.display().to_string());
+
+        let gib = cache_ops::read_max_cache_gib().unwrap_or(cache_ops::DEFAULT_MAX_CACHE_GIB);
+        let limit_text = if gib == 0 {
+            "Unlimited".to_string()
+        } else {
+            cache_ops::format_bytes(u64::from(gib) * 1024 * 1024 * 1024)
+        };
+        self.size_value.set_text(&format!(
+            "{} / {}",
+            cache_ops::format_bytes(report.total_bytes),
+            limit_text
+        ));
+        self.entries_value
+            .set_text(&cache_ops::format_count(report.entries));
+        Ok(())
+    }
+
+    /// Save-on-change: the combo selection is the single control for the
+    /// limit, so writing immediately keeps registry and UI in lockstep.
+    /// Programmatic `set_selection` does not emit this event, so opening
+    /// the dialog never writes.
+    fn on_limit_changed(&self) {
+        let index = self.limit_combo.selection().unwrap_or(2);
+        let gib = LIMIT_CHOICES_GIB[index];
+        if let Err(e) = cache_ops::write_max_cache_gib(gib) {
+            utils::show_error("Thumbnail Cache", &e.to_string());
+        }
+        if let Err(e) = self.refresh_stats() {
+            utils::show_error("Thumbnail Cache", &e.to_string());
+        }
+    }
+
+    /// Confirm, physically clear the L2 cache, refresh the stats display.
+    /// Clearing (plan section 12.2) deletes stored data only — it triggers
+    /// no library scan and no regeneration; thumbnails rebuild lazily on
+    /// demand.
+    fn on_clear_cache(&self) {
+        let choice = nwg::modal_message(
+            &self.window.handle,
+            &nwg::MessageParams {
+                title: "Clear CBXShell Cache",
+                content: "Delete all cached CBXShell thumbnails from disk?\n\n\
+                          No library scan is performed; thumbnails are rebuilt \
+                          lazily when archives are viewed again.",
+                buttons: nwg::MessageButtons::YesNo,
+                icons: nwg::MessageIcons::Question,
+            },
+        );
+        if choice != nwg::MessageChoice::Yes {
+            return;
+        }
+        if let Err(e) = cache_ops::clear_all() {
+            utils::show_error("Clear CBXShell Cache", &e.to_string());
+            return;
+        }
+        if let Err(e) = self.refresh_stats() {
+            utils::show_error("Thumbnail Cache", &e.to_string());
+        }
     }
 }

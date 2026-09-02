@@ -8,10 +8,11 @@ rust-version.workspace = true
 
 [dependencies]
 cbxshell-core.workspace = true
+cbxshell-thumbnail-cache.workspace = true
 anyhow.workspace = true
 winreg.workspace = true
 windows.workspace = true
-native-windows-gui = { workspace = true, features = ["menu", "frame"] }
+native-windows-gui = { workspace = true, features = ["menu", "frame", "combobox"] }
 native-windows-derive.workspace = true
 
 [features]

@@ -1,7 +1,8 @@
-///! CBXManager - Configuration utility modules
+//! CBXManager - Configuration utility modules
 
-pub mod state;
+pub mod cache_ops;
 pub mod registry_ops;
-pub mod update;
+pub mod state;
 pub mod ui;
+pub mod update;
 pub mod utils;
