@@ -5,13 +5,22 @@
 
 use std::fs::OpenOptions;
 use std::io::Write;
-use std::path::PathBuf;
-use std::sync::Mutex;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 const DEBUG_LOG_FILENAME: &str = "cbxshell_debug.log";
 
 /// Global mutex to serialize log writes
 static LOG_MUTEX: Mutex<()> = Mutex::new(());
+static DEBUG_ENABLED: OnceLock<bool> = OnceLock::new();
+
+fn debug_enabled_from_env(get: impl Fn(&str) -> Option<String>) -> bool {
+    get("CBXSHELL_DEBUG").as_deref() == Some("1") || get("CBXSHELL_DEBUG_LOG_PATH").is_some()
+}
+
+fn debug_enabled() -> bool {
+    *DEBUG_ENABLED.get_or_init(|| debug_enabled_from_env(|name| std::env::var(name).ok()))
+}
 
 fn debug_log_path() -> PathBuf {
     if let Some(custom_path) = std::env::var_os("CBXSHELL_DEBUG_LOG_PATH") {
@@ -21,16 +30,7 @@ fn debug_log_path() -> PathBuf {
     std::env::temp_dir().join(DEBUG_LOG_FILENAME)
 }
 
-/// Log a debug message to file with timestamp
-///
-/// This function is safe to call from any thread and will serialize writes.
-/// Errors are silently ignored to prevent logging from breaking functionality.
-pub fn debug_log(msg: &str) {
-    let Ok(_guard) = LOG_MUTEX.lock() else {
-        return;
-    };
-
-    let path = debug_log_path();
+fn write_line(path: &Path, msg: &str) {
     if let Some(parent) = path.parent() {
         let _ = std::fs::create_dir_all(parent);
     }
@@ -38,7 +38,7 @@ pub fn debug_log(msg: &str) {
     let _ = OpenOptions::new()
         .create(true)
         .append(true)
-        .open(&path)
+        .open(path)
         .and_then(|mut f| {
             use std::time::SystemTime;
 
@@ -49,6 +49,22 @@ pub fn debug_log(msg: &str) {
 
             writeln!(f, "[{}] {}", timestamp, msg)
         });
+}
+
+/// Log a debug message to file with timestamp
+///
+/// This function is safe to call from any thread and will serialize writes.
+/// Errors are silently ignored to prevent logging from breaking functionality.
+pub fn debug_log(msg: &str) {
+    if !debug_enabled() {
+        return;
+    }
+
+    let Ok(_guard) = LOG_MUTEX.lock() else {
+        return;
+    };
+
+    write_line(&debug_log_path(), msg);
 }
 
 /// Log method entry with parameters
@@ -84,24 +100,63 @@ macro_rules! log_error {
 /// Clear the debug log file (useful for testing)
 #[allow(dead_code)] // Utility function for debugging and testing
 pub fn clear_debug_log() {
-    let _ = std::fs::remove_file(debug_log_path());
+    if debug_enabled() {
+        let _ = std::fs::remove_file(debug_log_path());
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex;
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Mutex,
+    };
 
     static TEST_LOG_MUTEX: Mutex<()> = Mutex::new(());
+    static TEST_PATH_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    fn test_path(name: &str) -> PathBuf {
+        let nonce = TEST_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir().join(format!(
+            "cbxshell_debug_{}_{}_{}",
+            std::process::id(),
+            name,
+            nonce
+        ))
+    }
+
+    #[test]
+    fn test_debug_gate_requires_explicit_opt_in() {
+        assert!(debug_enabled_from_env(|name| match name {
+            "CBXSHELL_DEBUG" => Some("1".to_string()),
+            _ => None,
+        }));
+        assert!(!debug_enabled_from_env(|_| None));
+        assert!(!debug_enabled_from_env(|name| match name {
+            "CBXSHELL_DEBUG" => Some("0".to_string()),
+            _ => None,
+        }));
+    }
+
+    #[test]
+    fn test_debug_gate_path_implies_opt_in() {
+        assert!(debug_enabled_from_env(|name| match name {
+            "CBXSHELL_DEBUG" => Some("0".to_string()),
+            "CBXSHELL_DEBUG_LOG_PATH" => Some("custom.log".to_string()),
+            _ => None,
+        }));
+    }
 
     #[test]
     fn test_debug_log_basic() {
         let _guard = TEST_LOG_MUTEX.lock().unwrap();
-        clear_debug_log();
-        debug_log("Test message");
+        let path = test_path("basic");
+        write_line(&path, "Test message");
 
-        let contents = std::fs::read_to_string(debug_log_path()).unwrap();
+        let contents = std::fs::read_to_string(&path).unwrap();
         assert!(contents.contains("Test message"));
+        let _ = std::fs::remove_file(path);
     }
 
     #[test]
@@ -109,15 +164,15 @@ mod tests {
         use std::thread;
 
         let _guard = TEST_LOG_MUTEX.lock().unwrap();
-        clear_debug_log();
-
-        // Small delay to ensure file is deleted
-        std::thread::sleep(std::time::Duration::from_millis(100));
+        let path = test_path("concurrent");
+        let path_for_threads = path.clone();
 
         let handles: Vec<_> = (0..10)
             .map(|i| {
+                let path = path_for_threads.clone();
                 thread::spawn(move || {
-                    debug_log(&format!("Thread {} message", i));
+                    let _guard = LOG_MUTEX.lock().unwrap();
+                    write_line(&path, &format!("Thread {} message", i));
                 })
             })
             .collect();
@@ -126,22 +181,12 @@ mod tests {
             handle.join().unwrap();
         }
 
-        let contents = std::fs::read_to_string(debug_log_path()).unwrap();
-
-        // Count only lines containing "Thread" and "message" from this test
-        // Other tests may write to the log file concurrently
+        let contents = std::fs::read_to_string(&path).unwrap();
         let matching_lines = contents
             .lines()
             .filter(|line| line.contains("Thread") && line.contains("message"))
             .count();
-
-        // Verify we have exactly 10 messages from our threads
-        assert_eq!(
-            matching_lines,
-            10,
-            "Expected 10 thread messages, found {} (total lines: {})",
-            matching_lines,
-            contents.lines().count()
-        );
+        assert_eq!(matching_lines, 10);
+        let _ = std::fs::remove_file(path);
     }
 }
