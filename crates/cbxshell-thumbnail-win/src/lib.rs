@@ -16,4 +16,7 @@ pub mod resizer {
 pub mod thumbnail;
 
 pub use resizer::ResizeFilter;
-pub use thumbnail::{create_thumbnail, create_thumbnail_with_size, ThumbnailConfig};
+pub use thumbnail::{
+    create_thumbnail, create_thumbnail_with_size, render_thumbnail, RenderedThumbnail,
+    ThumbnailConfig,
+};

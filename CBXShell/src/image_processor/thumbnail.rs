@@ -56,10 +56,45 @@ impl Default for ThumbnailConfig {
     }
 }
 
+/// Fully rendered thumbnail pixels at the rendering boundary
+///
+/// Holds the complete rendering result of the thumbnail pipeline before any
+/// Windows GDI object is created: the RGBA buffer is already resized and the
+/// background color composited with alpha forced opaque, so it reflects the
+/// exact visible rendering policy. This makes it suitable for persistence
+/// (e.g. as a canonical cache proxy) and for deferred HBITMAP creation.
+#[derive(Debug, Clone)]
+pub struct RenderedThumbnail {
+    /// Rendered width in pixels
+    pub width: u32,
+
+    /// Rendered height in pixels
+    pub height: u32,
+
+    /// Fully rendered RGBA pixels (`width * height * 4` bytes)
+    pub rgba: Vec<u8>,
+}
+
+impl RenderedThumbnail {
+    /// Convert the rendered RGBA pixels into a Windows HBITMAP
+    ///
+    /// The caller owns the returned HBITMAP and must release it with
+    /// `DeleteObject`.
+    pub fn to_hbitmap(&self) -> Result<HBITMAP> {
+        // Convert RGBA to BGRA (Windows format)
+        let bgra = hbitmap::rgba_to_bgra(&self.rgba);
+
+        // Create Windows HBITMAP
+        hbitmap::create_hbitmap_from_bgra(&bgra, self.width, self.height)
+    }
+}
+
 /// Create thumbnail HBITMAP from image data
 ///
-/// This is the main entry point for thumbnail generation. It orchestrates
-/// the complete pipeline and matches the C++ implementation behavior.
+/// This is the main entry point for thumbnail generation and matches the
+/// C++ implementation behavior. It is a thin wrapper that renders the
+/// pixels via [`render_thumbnail`] and converts the result with
+/// [`RenderedThumbnail::to_hbitmap`].
 ///
 /// # Arguments
 /// * `image_data` - Raw image file bytes (any supported format)
@@ -102,6 +137,27 @@ impl Default for ThumbnailConfig {
 /// // Remember to DeleteObject(hbitmap) when done
 /// ```
 pub fn create_thumbnail(image_data: &[u8], config: ThumbnailConfig) -> Result<HBITMAP> {
+    render_thumbnail(image_data, config)?.to_hbitmap()
+}
+
+/// Render thumbnail pixels from image data without creating a GDI object
+///
+/// This is the rendering boundary of the thumbnail pipeline: it decodes the
+/// image, calculates the target size (aspect ratio preserved, no upscaling),
+/// resizes, and applies the background color. The returned
+/// [`RenderedThumbnail`] holds fully rendered RGBA pixels that already
+/// reflect the visible rendering policy (background applied, alpha opaque),
+/// ready either for [`RenderedThumbnail::to_hbitmap`] or for persistence as
+/// a rendered canonical proxy.
+///
+/// # Arguments
+/// * `image_data` - Raw image file bytes (any supported format)
+/// * `config` - Thumbnail generation configuration
+///
+/// # Returns
+/// * `Ok(RenderedThumbnail)` - Fully rendered thumbnail pixels
+/// * `Err(CbxError)` - Failed to render thumbnail
+pub fn render_thumbnail(image_data: &[u8], config: ThumbnailConfig) -> Result<RenderedThumbnail> {
     // Step 1: Decode image from bytes
     crate::utils::debug_log::debug_log(&format!(
         "Decoding image from {} bytes...",
@@ -177,11 +233,11 @@ pub fn create_thumbnail(image_data: &[u8], config: ThumbnailConfig) -> Result<HB
     // before drawing the image
     apply_background(&mut rgba, config.background_color);
 
-    // Step 6: Convert RGBA to BGRA (Windows format)
-    let bgra = hbitmap::rgba_to_bgra(&rgba);
-
-    // Step 7: Create Windows HBITMAP
-    hbitmap::create_hbitmap_from_bgra(&bgra, target_width, target_height)
+    Ok(RenderedThumbnail {
+        width: target_width,
+        height: target_height,
+        rgba,
+    })
 }
 
 /// Apply background color to transparent areas
@@ -254,6 +310,15 @@ mod tests {
     use image::Rgba;
     use image::RgbaImage;
     use windows::Win32::Graphics::Gdi::DeleteObject;
+
+    /// Encode an RGBA image as an in-memory PNG for pipeline tests
+    fn encode_test_png(img: &RgbaImage) -> Vec<u8> {
+        let mut cursor = std::io::Cursor::new(Vec::new());
+        image::DynamicImage::ImageRgba8(img.clone())
+            .write_to(&mut cursor, image::ImageFormat::Png)
+            .expect("PNG encoding should succeed");
+        cursor.into_inner()
+    }
 
     /// Minimal valid JPEG (1x1 red pixel)
     const MINIMAL_JPEG: &[u8] = &[
@@ -461,5 +526,91 @@ mod tests {
                 DeleteObject(hbitmap);
             }
         }
+    }
+
+    #[test]
+    fn test_render_thumbnail_downscale_dimensions() {
+        // A large source must downscale to exactly the dimensions calculated
+        // by calculate_thumbnail_size (aspect ratio preserved)
+        let src = RgbaImage::from_pixel(640, 480, Rgba([255, 0, 0, 255]));
+        let png = encode_test_png(&src);
+
+        let rendered = render_thumbnail(&png, ThumbnailConfig::default())
+            .expect("render_thumbnail should succeed");
+
+        let expected = resizer::calculate_thumbnail_size(640, 480, 256, 256);
+        assert_eq!((rendered.width, rendered.height), expected);
+        assert_eq!((rendered.width, rendered.height), (256, 192));
+        assert_eq!(
+            rendered.rgba.len(),
+            (rendered.width * rendered.height * 4) as usize
+        );
+    }
+
+    #[test]
+    fn test_render_thumbnail_no_upscale_dimensions() {
+        // A source smaller than the limit keeps its natural size
+        let config = ThumbnailConfig {
+            max_width: 4096,
+            max_height: 4096,
+            ..Default::default()
+        };
+
+        let rendered =
+            render_thumbnail(MINIMAL_JPEG, config).expect("render_thumbnail should succeed");
+
+        assert_eq!((rendered.width, rendered.height), (1, 1));
+        assert_eq!(rendered.rgba.len(), 4);
+    }
+
+    #[test]
+    fn test_render_thumbnail_rgba_fully_opaque() {
+        // Every rendered pixel must be fully opaque (alpha forced to 255)
+        let src = RgbaImage::from_pixel(320, 240, Rgba([255, 0, 0, 128]));
+        let png = encode_test_png(&src);
+
+        let rendered = render_thumbnail(&png, ThumbnailConfig::default())
+            .expect("render_thumbnail should succeed");
+
+        assert!(
+            rendered.rgba.chunks_exact(4).all(|pixel| pixel[3] == 255),
+            "every rendered pixel must be fully opaque"
+        );
+    }
+
+    #[test]
+    fn test_render_thumbnail_transparent_becomes_background() {
+        // Fully transparent pixels must take the background color; the 4x4
+        // source fits the default limit, so no resize alters the pixels
+        let src = RgbaImage::from_pixel(4, 4, Rgba([255, 0, 0, 0]));
+        let png = encode_test_png(&src);
+
+        let rendered = render_thumbnail(&png, ThumbnailConfig::default())
+            .expect("render_thumbnail should succeed");
+
+        assert_eq!(rendered.width, 4);
+        assert_eq!(rendered.height, 4);
+        for pixel in rendered.rgba.chunks_exact(4) {
+            assert_eq!(pixel, &[255, 255, 255, 255]);
+        }
+    }
+
+    #[test]
+    fn test_rendered_thumbnail_to_hbitmap_roundtrip() {
+        let rendered = render_thumbnail(MINIMAL_JPEG, ThumbnailConfig::default())
+            .expect("render_thumbnail should succeed");
+
+        let hbitmap = rendered.to_hbitmap().expect("to_hbitmap should succeed");
+        unsafe {
+            assert_ne!(hbitmap.0, 0);
+            assert!(DeleteObject(hbitmap).as_bool());
+        }
+    }
+
+    #[test]
+    fn test_render_thumbnail_invalid_data() {
+        let invalid_data = b"This is not an image";
+        let result = render_thumbnail(invalid_data, ThumbnailConfig::default());
+        assert!(result.is_err());
     }
 }
