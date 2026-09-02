@@ -15,6 +15,7 @@ name = "cbxshell"
 cbxshell-core.workspace = true
 cbxshell-archive.workspace = true
 cbxshell-image.workspace = true
+cbxshell-thumbnail-cache.workspace = true
 windows.workspace = true
 winreg.workspace = true
 tracing.workspace = true

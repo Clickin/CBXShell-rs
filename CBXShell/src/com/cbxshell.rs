@@ -1,3 +1,4 @@
+use super::l2_cache;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicU32;
 use std::sync::Mutex;
@@ -56,7 +57,7 @@ impl CBXShell {
             .unwrap_or(false)
     }
 
-    fn normalize_stream_name_to_path(stream_name: &str) -> Option<PathBuf> {
+    pub(crate) fn normalize_stream_name_to_path(stream_name: &str) -> Option<PathBuf> {
         let trimmed = stream_name.trim();
         if trimmed.is_empty() {
             return None;
@@ -105,15 +106,22 @@ impl CBXShell {
 
     /// Extract thumbnail from archive (internal implementation)
     ///
-    /// This is the core thumbnail extraction logic for IThumbnailProvider that:
-    /// 1. Gets the IStream from IInitializeWithStream
-    /// 2. Reads archive data from stream into memory
-    /// 3. Detects archive type from magic bytes
-    /// 4. Opens the archive from memory
-    /// 5. Reads sort preference from registry
-    /// 6. Finds the first image (alphabetically if sorted)
-    /// 7. Extracts the image data
-    /// 8. Creates thumbnail HBITMAP with requested size
+    /// Core thumbnail extraction for IThumbnailProvider (plan section 8):
+    ///
+    /// 1. Normalize the requested size (`cx == 0` -> 256)
+    /// 2. Read the sort preference (part of the L2 cache variant identity)
+    /// 3. Resolve the source identity and attempt an L2 cache hit — on a
+    ///    hit the canonical proxy is decoded and resized to `cx` with no
+    ///    archive open and no archive read at all
+    /// 4. On miss or bypass: open the archive (RAR path special-case with
+    ///    stream fallback), find the first image, extract and verify it
+    /// 5. Render the canonical proxy, persist it best-effort, and derive
+    ///    the returned HBITMAP from it
+    /// 6. Fall back to the legacy decode-and-resize path whenever canonical
+    ///    rendering fails, so extraction never regresses
+    ///
+    /// Every cache error degrades to the normal archive path; no cache
+    /// failure can fail GetThumbnail (plan goal 10).
     ///
     /// # Arguments
     /// * `cx` - Maximum thumbnail width/height in pixels
@@ -125,8 +133,16 @@ impl CBXShell {
         use crate::archive::{
             open_archive, open_archive_from_stream, should_sort_images, IStreamReader,
         };
-        use crate::image_processor::thumbnail::create_thumbnail_with_size;
+        use crate::image_processor::decoder::preview::{
+            DecodedPreview, JpegPreviewCodec, PreviewCacheCodec,
+        };
+        use crate::image_processor::thumbnail::render_canonical_proxy;
         use crate::utils::error::CbxError;
+        use cbxshell_thumbnail_cache::store::ThumbnailCache;
+
+        // Plan section 8 step 1: normalize the requested size first so the
+        // L2 path and the archive path see the same dimensions.
+        let cx = if cx == 0 { 256 } else { cx };
 
         crate::utils::debug_log::debug_log(
             ">>>>> extract_thumbnail_internal STARTING (SOURCE-AWARE) <<<<<",
@@ -136,6 +152,89 @@ impl CBXShell {
         let file_path = self.get_file_path();
         let stream = self.get_stream();
 
+        // Plan section 8 step 2: read the cover-selection/sort setting
+        // before identity resolution because the cache variant includes it.
+        let sort = should_sort_images();
+        tracing::debug!("Sort preference: {}", sort);
+        crate::utils::debug_log::debug_log(&format!("Step 4: Sort preference: {}", sort));
+
+        // === L2 cache lookup (plan sections 4 and 8) ===
+        let identity = l2_cache::resolve_source_identity(file_path.as_deref(), stream.as_ref());
+        if identity.is_none() {
+            match (file_path.as_deref(), stream.as_ref()) {
+                (Some(_), _) => crate::utils::debug_log::debug_log(
+                    "L2 CACHE BYPASS: file has no stable source identity",
+                ),
+                (None, Some(_)) => crate::utils::debug_log::debug_log(
+                    "L2 CACHE BYPASS: stream has no stable source identity",
+                ),
+                // No source at all: the archive-open path below reports it.
+                (None, None) => {}
+            }
+        }
+
+        let l2 = identity.map(|identity| {
+            let variant =
+                l2_cache::build_variant(&identity, sort, l2_cache::read_cache_generation());
+            (identity, variant)
+        });
+        let l2 = match l2 {
+            Some((identity, variant)) => match ThumbnailCache::with_default_root() {
+                Ok(cache) => Some((cache, identity, variant)),
+                Err(e) => {
+                    crate::utils::debug_log::debug_log(&format!(
+                        "L2 CACHE BYPASS: cache root unavailable: {}",
+                        e
+                    ));
+                    None
+                }
+            },
+            None => None,
+        };
+
+        if let Some((cache, identity, variant)) = l2.as_ref() {
+            match cache.load(identity, variant) {
+                Ok(Some(encoded)) => {
+                    let hit = JpegPreviewCodec::default()
+                        .decode(&encoded)
+                        .and_then(|proxy| {
+                            l2_cache::proxy_to_hbitmap(&proxy, cx).map(|hbitmap| (proxy, hbitmap))
+                        });
+                    match hit {
+                        Ok((proxy, hbitmap)) => {
+                            crate::utils::debug_log::debug_log(&format!(
+                                "L2 CACHE HIT (source={}, proxy={}x{}, cx={})",
+                                l2_cache::source_id_tag(identity),
+                                proxy.width,
+                                proxy.height,
+                                cx
+                            ));
+                            crate::utils::debug_log::debug_log(
+                                ">>>>> extract_thumbnail_internal COMPLETED SUCCESSFULLY <<<<<",
+                            );
+                            return Ok(hbitmap);
+                        }
+                        Err(e) => {
+                            // Corrupt entry (plan section 10): delete it
+                            // best-effort and continue as a cache miss.
+                            let _ = cache.remove_entry(identity, variant);
+                            crate::utils::debug_log::debug_log(&format!("L2 CACHE CORRUPT: {}", e));
+                        }
+                    }
+                }
+                Ok(None) => {
+                    crate::utils::debug_log::debug_log("L2 CACHE MISS");
+                }
+                Err(e) => {
+                    crate::utils::debug_log::debug_log(&format!(
+                        "L2 CACHE BYPASS: cache read failed: {}",
+                        e
+                    ));
+                }
+            }
+        }
+
+        // === Archive path (cache miss or bypass) ===
         let archive = match (file_path.as_deref(), stream) {
             (Some(path), stream_opt) if Self::is_rar_archive_path(path) => {
                 crate::utils::debug_log::debug_log(
@@ -213,11 +312,6 @@ impl CBXShell {
         };
         crate::utils::debug_log::debug_log("Step 3: Archive opened successfully");
 
-        // Step 4: Read sort preference from registry
-        let sort = should_sort_images();
-        tracing::debug!("Sort preference: {}", sort);
-        crate::utils::debug_log::debug_log(&format!("Step 4: Sort preference: {}", sort));
-
         // Step 5: Find first image in archive
         crate::utils::debug_log::debug_log("Step 5: Finding first image...");
         let entry = archive.find_first_image(sort)?;
@@ -241,30 +335,98 @@ impl CBXShell {
         crate::archive::verify_image_data(&image_data, &entry.name)?;
         crate::utils::debug_log::debug_log("Step 6b: Image format verification passed");
 
+        // === Canonical proxy persistence + requested-size HBITMAP
+        // (plan section 8, miss-path steps 8b-8e) ===
+        let hbitmap = if let Some((cache, identity, variant)) = l2.as_ref() {
+            crate::utils::debug_log::debug_log("Rendering canonical L2 proxy...");
+            match render_canonical_proxy(&image_data) {
+                Ok(canonical) => {
+                    // Best-effort persistence: store failures never affect
+                    // the extraction result (plan goal 10).
+                    match JpegPreviewCodec::default().encode(
+                        canonical.width,
+                        canonical.height,
+                        &canonical.rgba,
+                    ) {
+                        Ok(encoded) => match cache.store(identity, variant, &encoded) {
+                            Ok(()) => crate::utils::debug_log::debug_log(&format!(
+                                "L2 CACHE STORE (source={}, proxy={}x{}, bytes={})",
+                                l2_cache::source_id_tag(identity),
+                                canonical.width,
+                                canonical.height,
+                                encoded.len()
+                            )),
+                            Err(e) => crate::utils::debug_log::debug_log(&format!(
+                                "L2 CACHE STORE FAILED: {}",
+                                e
+                            )),
+                        },
+                        Err(e) => {
+                            crate::utils::debug_log::debug_log(&format!(
+                                "L2 CACHE STORE FAILED: {}",
+                                e
+                            ));
+                        }
+                    }
+
+                    // Derive the requested size from the canonical proxy
+                    // exactly like the cache-hit path does.
+                    let proxy =
+                        DecodedPreview::new(canonical.width, canonical.height, canonical.rgba);
+                    match l2_cache::proxy_to_hbitmap(&proxy, cx) {
+                        Ok(bmp) => bmp,
+                        Err(e) => {
+                            crate::utils::debug_log::debug_log(&format!(
+                                "WARN: HBITMAP from canonical proxy failed ({}); falling back to legacy rendering",
+                                e
+                            ));
+                            Self::create_thumbnail_legacy(&image_data, cx)?
+                        }
+                    }
+                }
+                Err(e) => {
+                    crate::utils::debug_log::debug_log(&format!(
+                        "WARN: canonical proxy render failed ({}); falling back to legacy rendering",
+                        e
+                    ));
+                    Self::create_thumbnail_legacy(&image_data, cx)?
+                }
+            }
+        } else {
+            Self::create_thumbnail_legacy(&image_data, cx)?
+        };
+
+        crate::utils::debug_log::debug_log(
+            ">>>>> extract_thumbnail_internal COMPLETED SUCCESSFULLY <<<<<",
+        );
+        Ok(hbitmap)
+    }
+
+    /// Legacy (pre-L2) rendering fallback: decode `image_data` and create
+    /// the requested-size HBITMAP directly. `cx` must already be
+    /// normalized (0 -> 256) by the caller. Preserves the original Step
+    /// 7/8 logging so legacy-path regressions stay diagnosable.
+    fn create_thumbnail_legacy(image_data: &[u8], cx: u32) -> crate::utils::error::Result<HBITMAP> {
+        use crate::image_processor::thumbnail::create_thumbnail_with_size;
+
         // Step 7: Use requested size from IThumbnailProvider::GetThumbnail
         // IThumbnailProvider provides cx (max dimension), we create square thumbnails
-        let thumbnail_size = if cx == 0 { 256 } else { cx };
-        tracing::debug!(
-            "Creating thumbnail with size: {}x{}",
-            thumbnail_size,
-            thumbnail_size
-        );
+        tracing::debug!("Creating thumbnail with size: {}x{}", cx, cx);
         crate::utils::debug_log::debug_log(&format!(
             "Step 7: Creating thumbnail with size: {}x{}",
-            thumbnail_size, thumbnail_size
+            cx, cx
         ));
 
         // Step 8: Create thumbnail HBITMAP
         crate::utils::debug_log::debug_log("Step 8: Creating thumbnail HBITMAP...");
-        let hbitmap = match create_thumbnail_with_size(&image_data, thumbnail_size, thumbnail_size)
-        {
+        match create_thumbnail_with_size(image_data, cx, cx) {
             Ok(bmp) => {
                 tracing::info!("Thumbnail created successfully: {:?}", bmp);
                 crate::utils::debug_log::debug_log(&format!(
                     "Step 8: Thumbnail created successfully - HBITMAP: {:?} (handle: 0x{:x})",
                     bmp, bmp.0 as usize
                 ));
-                bmp
+                Ok(bmp)
             }
             Err(e) => {
                 tracing::error!("Failed to create thumbnail: {}", e);
@@ -275,17 +437,12 @@ impl CBXShell {
                 crate::utils::debug_log::debug_log(&format!(
                     "ERROR: Image data size: {} bytes, requested size: {}x{}",
                     image_data.len(),
-                    thumbnail_size,
-                    thumbnail_size
+                    cx,
+                    cx
                 ));
-                return Err(e);
+                Err(e)
             }
-        };
-
-        crate::utils::debug_log::debug_log(
-            ">>>>> extract_thumbnail_internal COMPLETED SUCCESSFULLY <<<<<",
-        );
-        Ok(hbitmap)
+        }
     }
 }
 
