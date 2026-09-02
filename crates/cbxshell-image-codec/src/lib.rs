@@ -8,3 +8,10 @@ pub mod decoder {
 }
 
 pub use decoder::{decode_image, decode_rgba_image, DecodedRgbaImage};
+
+#[path = "../../../CBXShell/src/image_processor/preview_codec.rs"]
+mod preview_impl;
+
+pub mod preview {
+    pub use super::preview_impl::*;
+}

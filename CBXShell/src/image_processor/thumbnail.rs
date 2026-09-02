@@ -15,6 +15,7 @@ use windows::Win32::Graphics::Gdi::HBITMAP;
 
 use super::decoder;
 use super::hbitmap;
+use super::preview_codec;
 use super::resizer::{self, ResizeFilter};
 
 type Result<T> = std::result::Result<T, CbxError>;
@@ -238,6 +239,33 @@ pub fn render_thumbnail(image_data: &[u8], config: ThumbnailConfig) -> Result<Re
         height: target_height,
         rgba,
     })
+}
+
+/// Renderer revision of the thumbnail rendering pipeline (plan section 5.3)
+///
+/// Bump this only when rendering semantics change in a way that must
+/// invalidate cached visual output, e.g. cover-selection or sorting
+/// semantics, the resize algorithm, the background/compositing policy, or
+/// color-management behavior. Do NOT bump it merely because CBXShell itself
+/// is upgraded — an application version change must not invalidate all
+/// cached thumbnails.
+pub const RENDERER_REVISION: u32 = 1;
+
+/// Render the canonical preview proxy for the persistent L2 thumbnail cache
+///
+/// Applies the canonical proxy policy (plan section 2.2): aspect ratio
+/// preserved, never upscaled, longest edge limited to
+/// [`preview_codec::PROXY_MAX_DIMENSION`] pixels, and the default visible
+/// rendering policy (background composited, alpha forced opaque). The
+/// result is the persisted canonical representation from which all
+/// Explorer-requested thumbnail sizes are derived.
+pub fn render_canonical_proxy(image_data: &[u8]) -> Result<RenderedThumbnail> {
+    let config = ThumbnailConfig {
+        max_width: u32::from(preview_codec::PROXY_MAX_DIMENSION),
+        max_height: u32::from(preview_codec::PROXY_MAX_DIMENSION),
+        ..Default::default()
+    };
+    render_thumbnail(image_data, config)
 }
 
 /// Apply background color to transparent areas
@@ -612,5 +640,37 @@ mod tests {
         let invalid_data = b"This is not an image";
         let result = render_thumbnail(invalid_data, ThumbnailConfig::default());
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_render_canonical_proxy_no_upscale() {
+        // A 300x450 source is below the canonical limit and must be stored
+        // at its natural size (never upscaled)
+        let src = RgbaImage::from_pixel(300, 450, Rgba([255, 0, 0, 255]));
+        let png = encode_test_png(&src);
+
+        let rendered = render_canonical_proxy(&png).expect("render_canonical_proxy should succeed");
+
+        assert_eq!((rendered.width, rendered.height), (300, 450));
+    }
+
+    #[test]
+    fn test_render_canonical_proxy_downscale_longest_edge() {
+        // A large portrait source downscales so the longest edge matches the
+        // canonical limit, preserving the aspect ratio computed by
+        // calculate_thumbnail_size
+        let src = RgbaImage::from_pixel(1600, 2400, Rgba([0, 0, 255, 255]));
+        let png = encode_test_png(&src);
+
+        let rendered = render_canonical_proxy(&png).expect("render_canonical_proxy should succeed");
+
+        let expected = resizer::calculate_thumbnail_size(1600, 2400, 1024, 1024);
+        assert_eq!((rendered.width, rendered.height), expected);
+        assert_eq!(rendered.width.max(rendered.height), 1024);
+    }
+
+    #[test]
+    fn test_renderer_revision_initial_value() {
+        assert_eq!(RENDERER_REVISION, 1);
     }
 }

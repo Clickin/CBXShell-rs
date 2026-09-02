@@ -70,6 +70,7 @@
 mod decoder;
 mod hbitmap;
 pub mod magic;
+pub mod preview_codec;
 mod resizer;
 pub mod thumbnail;
 
