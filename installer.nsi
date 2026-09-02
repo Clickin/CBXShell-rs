@@ -58,7 +58,12 @@
 
 ; CLSID for COM registration
 !define CLSID "{9E6ECB90-5A61-42BD-B851-D3297D9C7F39}"
-!define THUMB_HANDLER_GUID "{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+; Modern IThumbnailProvider handler GUID - written by installer, DLL and Manager.
+!define THUMB_HANDLER_GUID "{E357FCCD-A995-4576-B01F-234630154E96}"
+; Legacy IExtractImage handler GUID from older installers. Never written anymore;
+; referenced ONLY to detect (upgrade preselection) and delete (migration/uninstall)
+; association keys that older installers created and CBXShell owns.
+!define LEGACY_THUMB_HANDLER_GUID "{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
 !define INFOTIP_HANDLER_GUID "{00021500-0000-0000-C000-000000000046}"
 
 Name "${PRODUCT_NAME} ${PRODUCT_VERSION} (${ARCH_BITS})"
@@ -171,35 +176,49 @@ done_detect:
     !insertmacro SelectSection ${SecCB7}
   ${Else}
     ; Upgrade defaults: only preselect formats already associated to our CLSID.
-    ReadRegStr $R0 HKCU "Software\Classes\.zip\shellex\${THUMB_HANDLER_GUID}" ""
-    ${If} $R0 == "${CLSID}"
-      !insertmacro SelectSection ${SecZIP}
-    ${EndIf}
+    ; Ownership = modern IThumbnailProvider key, or legacy key from older installers;
+    ; both count as owned only when the key's default value equals ${CLSID}.
+    Push ${SecZIP}
+    Push "Software\Classes\.zip\shellex\${THUMB_HANDLER_GUID}"
+    Call SelectSectionIfAssocOwned
+    Push ${SecZIP}
+    Push "Software\Classes\.zip\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+    Call SelectSectionIfAssocOwned
 
-    ReadRegStr $R0 HKCU "Software\Classes\.rar\shellex\${THUMB_HANDLER_GUID}" ""
-    ${If} $R0 == "${CLSID}"
-      !insertmacro SelectSection ${SecRAR}
-    ${EndIf}
+    Push ${SecRAR}
+    Push "Software\Classes\.rar\shellex\${THUMB_HANDLER_GUID}"
+    Call SelectSectionIfAssocOwned
+    Push ${SecRAR}
+    Push "Software\Classes\.rar\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+    Call SelectSectionIfAssocOwned
 
-    ReadRegStr $R0 HKCU "Software\Classes\.7z\shellex\${THUMB_HANDLER_GUID}" ""
-    ${If} $R0 == "${CLSID}"
-      !insertmacro SelectSection ${Sec7Z}
-    ${EndIf}
+    Push ${Sec7Z}
+    Push "Software\Classes\.7z\shellex\${THUMB_HANDLER_GUID}"
+    Call SelectSectionIfAssocOwned
+    Push ${Sec7Z}
+    Push "Software\Classes\.7z\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+    Call SelectSectionIfAssocOwned
 
-    ReadRegStr $R0 HKCU "Software\Classes\.cbz\shellex\${THUMB_HANDLER_GUID}" ""
-    ${If} $R0 == "${CLSID}"
-      !insertmacro SelectSection ${SecCBZ}
-    ${EndIf}
+    Push ${SecCBZ}
+    Push "Software\Classes\.cbz\shellex\${THUMB_HANDLER_GUID}"
+    Call SelectSectionIfAssocOwned
+    Push ${SecCBZ}
+    Push "Software\Classes\.cbz\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+    Call SelectSectionIfAssocOwned
 
-    ReadRegStr $R0 HKCU "Software\Classes\.cbr\shellex\${THUMB_HANDLER_GUID}" ""
-    ${If} $R0 == "${CLSID}"
-      !insertmacro SelectSection ${SecCBR}
-    ${EndIf}
+    Push ${SecCBR}
+    Push "Software\Classes\.cbr\shellex\${THUMB_HANDLER_GUID}"
+    Call SelectSectionIfAssocOwned
+    Push ${SecCBR}
+    Push "Software\Classes\.cbr\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+    Call SelectSectionIfAssocOwned
 
-    ReadRegStr $R0 HKCU "Software\Classes\.cb7\shellex\${THUMB_HANDLER_GUID}" ""
-    ${If} $R0 == "${CLSID}"
-      !insertmacro SelectSection ${SecCB7}
-    ${EndIf}
+    Push ${SecCB7}
+    Push "Software\Classes\.cb7\shellex\${THUMB_HANDLER_GUID}"
+    Call SelectSectionIfAssocOwned
+    Push ${SecCB7}
+    Push "Software\Classes\.cb7\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+    Call SelectSectionIfAssocOwned
   ${EndIf}
 FunctionEnd
 
@@ -230,6 +249,31 @@ FunctionEnd
 
 Function un.DeleteAssocIfOwned
   ; Parameters: registry path on stack
+  Pop $R0
+  ReadRegStr $R1 HKCU "$R0" ""
+  StrCmp $R1 "${CLSID}" 0 done
+  DeleteRegKey HKCU "$R0"
+done:
+FunctionEnd
+
+Function SelectSectionIfAssocOwned
+  ; Parameters: section index, registry path on stack (push index first)
+  ; Selects the section when the key's default value equals our CLSID, i.e.
+  ; the association is owned by CBXShell. Used by .onInit upgrade preselection
+  ; for both the modern and the legacy thumbnail-handler key.
+  Pop $R0
+  Pop $R1
+  ReadRegStr $R2 HKCU "$R0" ""
+  StrCmp $R2 "${CLSID}" 0 done
+  !insertmacro SelectSection $R1
+done:
+FunctionEnd
+
+Function DeleteLegacyAssocIfOwned
+  ; Parameters: registry path on stack
+  ; Installer-side counterpart of un.DeleteAssocIfOwned: deletes the legacy
+  ; thumbnail-handler key only when owned by CBXShell (default == ${CLSID}).
+  ; Never deletes another application's association key.
   Pop $R0
   ReadRegStr $R1 HKCU "$R0" ""
   StrCmp $R1 "${CLSID}" 0 done
@@ -324,6 +368,9 @@ Section "Enable for ZIP files" ${SecZIP}
   ; Enable thumbnail handler for .zip files
   Push "Software\Classes\.zip\shellex\${THUMB_HANDLER_GUID}"
   Call WriteAssocSafe
+  ; Migration: remove legacy IExtractImage key left by older installers (owned only)
+  Push "Software\Classes\.zip\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+  Call DeleteLegacyAssocIfOwned
   Push "Software\Classes\.zip\shellex\${INFOTIP_HANDLER_GUID}"
   Call WriteAssocSafe
 SectionEnd
@@ -332,6 +379,9 @@ Section "Enable for CBZ files" ${SecCBZ}
   ; Enable thumbnail handler for .cbz files
   Push "Software\Classes\.cbz\shellex\${THUMB_HANDLER_GUID}"
   Call WriteAssocSafe
+  ; Migration: remove legacy IExtractImage key left by older installers (owned only)
+  Push "Software\Classes\.cbz\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+  Call DeleteLegacyAssocIfOwned
   Push "Software\Classes\.cbz\shellex\${INFOTIP_HANDLER_GUID}"
   Call WriteAssocSafe
 SectionEnd
@@ -340,6 +390,9 @@ Section "Enable for RAR files" ${SecRAR}
   ; Enable thumbnail handler for .rar files
   Push "Software\Classes\.rar\shellex\${THUMB_HANDLER_GUID}"
   Call WriteAssocSafe
+  ; Migration: remove legacy IExtractImage key left by older installers (owned only)
+  Push "Software\Classes\.rar\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+  Call DeleteLegacyAssocIfOwned
   Push "Software\Classes\.rar\shellex\${INFOTIP_HANDLER_GUID}"
   Call WriteAssocSafe
 SectionEnd
@@ -348,6 +401,9 @@ Section "Enable for CBR files" ${SecCBR}
   ; Enable thumbnail handler for .cbr files
   Push "Software\Classes\.cbr\shellex\${THUMB_HANDLER_GUID}"
   Call WriteAssocSafe
+  ; Migration: remove legacy IExtractImage key left by older installers (owned only)
+  Push "Software\Classes\.cbr\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+  Call DeleteLegacyAssocIfOwned
   Push "Software\Classes\.cbr\shellex\${INFOTIP_HANDLER_GUID}"
   Call WriteAssocSafe
 SectionEnd
@@ -356,6 +412,9 @@ Section "Enable for 7Z files" ${Sec7Z}
   ; Enable thumbnail handler for .7z files
   Push "Software\Classes\.7z\shellex\${THUMB_HANDLER_GUID}"
   Call WriteAssocSafe
+  ; Migration: remove legacy IExtractImage key left by older installers (owned only)
+  Push "Software\Classes\.7z\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+  Call DeleteLegacyAssocIfOwned
   Push "Software\Classes\.7z\shellex\${INFOTIP_HANDLER_GUID}"
   Call WriteAssocSafe
 SectionEnd
@@ -364,6 +423,9 @@ Section "Enable for CB7 files" ${SecCB7}
   ; Enable thumbnail handler for .cb7 files
   Push "Software\Classes\.cb7\shellex\${THUMB_HANDLER_GUID}"
   Call WriteAssocSafe
+  ; Migration: remove legacy IExtractImage key left by older installers (owned only)
+  Push "Software\Classes\.cb7\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+  Call DeleteLegacyAssocIfOwned
   Push "Software\Classes\.cb7\shellex\${INFOTIP_HANDLER_GUID}"
   Call WriteAssocSafe
 SectionEnd
@@ -392,30 +454,44 @@ Section "Uninstall"
 
   DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "CBXShellUpdateCheck"
 
-  ; Remove registry entries for file associations only when owned by this installer
-  Push "Software\Classes\.zip\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+  ; Remove registry entries for file associations only when owned by this installer.
+  ; Thumbnail keys: modern IThumbnailProvider plus legacy IExtractImage key from
+  ; older installers (owned-only deletion); infotip keys unchanged.
+  Push "Software\Classes\.zip\shellex\${THUMB_HANDLER_GUID}"
   Call un.DeleteAssocIfOwned
-  Push "Software\Classes\.zip\shellex\{00021500-0000-0000-C000-000000000046}"
+  Push "Software\Classes\.zip\shellex\${LEGACY_THUMB_HANDLER_GUID}"
   Call un.DeleteAssocIfOwned
-  Push "Software\Classes\.cbz\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+  Push "Software\Classes\.zip\shellex\${INFOTIP_HANDLER_GUID}"
   Call un.DeleteAssocIfOwned
-  Push "Software\Classes\.cbz\shellex\{00021500-0000-0000-C000-000000000046}"
+  Push "Software\Classes\.cbz\shellex\${THUMB_HANDLER_GUID}"
   Call un.DeleteAssocIfOwned
-  Push "Software\Classes\.rar\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+  Push "Software\Classes\.cbz\shellex\${LEGACY_THUMB_HANDLER_GUID}"
   Call un.DeleteAssocIfOwned
-  Push "Software\Classes\.rar\shellex\{00021500-0000-0000-C000-000000000046}"
+  Push "Software\Classes\.cbz\shellex\${INFOTIP_HANDLER_GUID}"
   Call un.DeleteAssocIfOwned
-  Push "Software\Classes\.cbr\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+  Push "Software\Classes\.rar\shellex\${THUMB_HANDLER_GUID}"
   Call un.DeleteAssocIfOwned
-  Push "Software\Classes\.cbr\shellex\{00021500-0000-0000-C000-000000000046}"
+  Push "Software\Classes\.rar\shellex\${LEGACY_THUMB_HANDLER_GUID}"
   Call un.DeleteAssocIfOwned
-  Push "Software\Classes\.7z\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+  Push "Software\Classes\.rar\shellex\${INFOTIP_HANDLER_GUID}"
   Call un.DeleteAssocIfOwned
-  Push "Software\Classes\.7z\shellex\{00021500-0000-0000-C000-000000000046}"
+  Push "Software\Classes\.cbr\shellex\${THUMB_HANDLER_GUID}"
   Call un.DeleteAssocIfOwned
-  Push "Software\Classes\.cb7\shellex\{BB2E617C-0920-11d1-9A0B-00C04FC2D6C1}"
+  Push "Software\Classes\.cbr\shellex\${LEGACY_THUMB_HANDLER_GUID}"
   Call un.DeleteAssocIfOwned
-  Push "Software\Classes\.cb7\shellex\{00021500-0000-0000-C000-000000000046}"
+  Push "Software\Classes\.cbr\shellex\${INFOTIP_HANDLER_GUID}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.7z\shellex\${THUMB_HANDLER_GUID}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.7z\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.7z\shellex\${INFOTIP_HANDLER_GUID}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.cb7\shellex\${THUMB_HANDLER_GUID}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.cb7\shellex\${LEGACY_THUMB_HANDLER_GUID}"
+  Call un.DeleteAssocIfOwned
+  Push "Software\Classes\.cb7\shellex\${INFOTIP_HANDLER_GUID}"
   Call un.DeleteAssocIfOwned
 
   ; Remove settings
