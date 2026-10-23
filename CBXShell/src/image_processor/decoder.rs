@@ -1,6 +1,8 @@
 //! Image decoding from raw bytes
 //!
 //! Uses a hybrid decoding strategy:
+//! JPEG XL uses the bundled Rust decoder (first frame, sRGB RGBA8).
+//! Other formats use:
 //! 1. Windows WIC decoder first (uses OS codecs when available)
 //! 2. Fallback to Rust `image` crate decoder
 //!
@@ -67,9 +69,10 @@ impl DecodedRgbaImage {
 /// ```
 pub fn decode_image(data: &[u8]) -> Result<DynamicImage> {
     let decoded = decode_rgba_image(data)?;
-    let image = ImageBuffer::from_raw(decoded.width, decoded.height, decoded.pixels).ok_or_else(
-        || CbxError::Image("Decoded image had unexpected pixel buffer size".to_string()),
-    )?;
+    let image =
+        ImageBuffer::from_raw(decoded.width, decoded.height, decoded.pixels).ok_or_else(|| {
+            CbxError::Image("Decoded image had unexpected pixel buffer size".to_string())
+        })?;
 
     Ok(DynamicImage::ImageRgba8(image))
 }
@@ -77,6 +80,13 @@ pub fn decode_image(data: &[u8]) -> Result<DynamicImage> {
 pub fn decode_rgba_image(data: &[u8]) -> Result<DecodedRgbaImage> {
     if data.is_empty() {
         return Err(CbxError::Image("Empty image data".to_string()));
+    }
+
+    if matches!(
+        cbxshell_image_magic::detect_image_format(data),
+        Ok(cbxshell_image_magic::ImageFormat::JpegXl)
+    ) {
+        return decode_jpeg_xl(data);
     }
 
     debug_log(&format!(
@@ -99,6 +109,82 @@ pub fn decode_rgba_image(data: &[u8]) -> Result<DecodedRgbaImage> {
 
     // Fallback path: decode via Rust image crate for broad compatibility.
     decode_with_image_crate(data)
+}
+
+/// Decode a complete JPEG XL image; never display a partially loaded frame.
+fn decode_jpeg_xl(data: &[u8]) -> Result<DecodedRgbaImage> {
+    use jxl_oxide::{AllocTracker, EnumColourEncoding, JxlImage, RenderingIntent};
+
+    // Explorer processes untrusted archives. Bound decoder working buffers and output
+    // independently; the allocation tracker does not account for every allocation.
+    const MEMORY_LIMIT: usize = 256 * 1024 * 1024;
+    let mut image = JxlImage::builder()
+        .alloc_tracker(AllocTracker::with_limit(MEMORY_LIMIT))
+        .read(Cursor::new(data))
+        .map_err(|e| CbxError::Image(format!("JPEG XL read failed: {e}")))?;
+    if !image.is_loading_done() {
+        return Err(CbxError::Image("Incomplete JPEG XL image".to_string()));
+    }
+    let output_len = (image.width() as usize)
+        .checked_mul(image.height() as usize)
+        .and_then(|pixels| pixels.checked_mul(4))
+        .filter(|&len| len > 0 && len <= MEMORY_LIMIT)
+        .ok_or_else(|| CbxError::Image("JPEG XL image exceeds output size limit".to_string()))?;
+
+    let associated_alpha = image
+        .image_header()
+        .metadata
+        .ec_info
+        .iter()
+        .find_map(|info| info.alpha_associated())
+        .unwrap_or(false);
+    image.request_color_encoding(EnumColourEncoding::srgb(RenderingIntent::Relative));
+    let render = image
+        .render_frame(0)
+        .map_err(|e| CbxError::Image(format!("JPEG XL render failed: {e}")))?;
+    // stream() applies orientation and exposes only color and alpha channels.
+    let mut stream = render.stream();
+    let (width, height) = (stream.width(), stream.height());
+    let channels = stream.channels() as usize;
+    if !(1..=4).contains(&channels) {
+        return Err(CbxError::Image(
+            "Unsupported JPEG XL pixel format".to_string(),
+        ));
+    }
+    let mut pixels = Vec::new();
+    pixels
+        .try_reserve_exact(output_len)
+        .map_err(|e| CbxError::Image(format!("JPEG XL output allocation failed: {e}")))?;
+    let mut row = vec![0u8; width as usize * channels];
+    for _ in 0..height {
+        if stream.write_to_buffer(&mut row) != row.len() {
+            return Err(CbxError::Image(
+                "Incomplete JPEG XL pixel buffer".to_string(),
+            ));
+        }
+        for pixel in row.chunks_exact(channels) {
+            match pixel {
+                [gray] => pixels.extend_from_slice(&[*gray, *gray, *gray, 255]),
+                [gray, alpha] => pixels.extend_from_slice(&[*gray, *gray, *gray, *alpha]),
+                [red, green, blue] => pixels.extend_from_slice(&[*red, *green, *blue, 255]),
+                rgba => pixels.extend_from_slice(rgba),
+            }
+        }
+    }
+    if associated_alpha {
+        // The thumbnail pipeline expects straight alpha and composites it once.
+        // JPEG XL may store RGB already multiplied by alpha.
+        for pixel in pixels.as_chunks_mut::<4>().0 {
+            let alpha = u32::from(pixel[3]);
+            for channel in &mut pixel[..3] {
+                *channel = (u32::from(*channel) * 255 + alpha / 2)
+                    .checked_div(alpha)
+                    .unwrap_or(0)
+                    .min(255) as u8;
+            }
+        }
+    }
+    Ok(DecodedRgbaImage::new(width, height, pixels))
 }
 
 fn decode_with_image_crate(data: &[u8]) -> Result<DecodedRgbaImage> {

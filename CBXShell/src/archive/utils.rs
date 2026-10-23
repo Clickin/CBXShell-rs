@@ -13,6 +13,7 @@ const IMAGE_EXTENSIONS: &[&str] = &[
     "bmp", "ico", "gif", "jpg", "jpe", "jfif", "jpeg", "png", "tif", "tiff",
     "webp", // Phase 3
     "avif", // Phase 3
+    "jxl",
 ];
 
 /// Check if filename is an image based on extension

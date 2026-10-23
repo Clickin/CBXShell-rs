@@ -11,7 +11,7 @@ pub mod magic {
 pub use magic::*;
 
 const SUPPORTED_EXTENSIONS: &[&str] = &[
-    "jpg", "jpeg", "jpe", "jfif", "png", "gif", "bmp", "webp", "avif", "tif", "tiff", "ico",
+    "jpg", "jpeg", "jpe", "jfif", "png", "gif", "bmp", "webp", "avif", "jxl", "tif", "tiff", "ico",
 ];
 
 pub fn is_image_file(filename: &str) -> bool {

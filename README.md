@@ -1,6 +1,6 @@
 # CBXShell-rs
 
-Modern Windows Shell Extension for ZIP/RAR/7z comic book archive thumbnail preview with WebP/AVIF support, built on IThumbnailProvider.
+Modern Windows Shell Extension for ZIP/RAR/7z comic book archive thumbnail preview with WebP/AVIF/JPEG XL support, built on IThumbnailProvider.
 
 > **Rust reimplementation** of the original [CBXShell](https://github.com/T800G/CBXShell) C++ project by T800 Productions ([CodeProject article](https://www.codeproject.com/Articles/2270/CBXShell-A-Thumbnail-Shell-Extension-for-Comic-Boo)), modernized with Rust for improved memory safety, maintainability, and Windows 11 compatibility using the modern IThumbnailProvider interface.
 
@@ -8,7 +8,7 @@ Modern Windows Shell Extension for ZIP/RAR/7z comic book archive thumbnail previ
 
 - **Modern Windows Integration**: Uses IThumbnailProvider for native Windows Vista+ compatibility
 - **Multi-Format Support**: ZIP, RAR, 7z archives (.cbz, .cbr, .cb7)
-- **Modern Image Formats**: JPEG, PNG, GIF, BMP, TIFF, ICO, **WebP**, **AVIF**
+- **Modern Image Formats**: JPEG, PNG, GIF, BMP, TIFF, ICO, **WebP**, **AVIF**, **JPEG XL (.jxl)**
 - **GitHub Release Update Awareness**: Per-user background update checks with manual check from CBXShell Manager
 - **Pure Rust**: Memory-safe implementation using `windows-rs`
 - **High-Quality Thumbnails**: Advanced resizing with `fast_image_resize` for crisp previews
@@ -21,7 +21,7 @@ Modern Windows Shell Extension for ZIP/RAR/7z comic book archive thumbnail previ
 
 ### Prerequisites
 
-- Rust 1.70+ (stable)
+- Rust 1.88+ (stable)
 - Windows 10 SDK or later
 - Visual Studio Build Tools (for MSVC linker)
 
@@ -68,6 +68,10 @@ $env:PROCESSOR_ARCHITECTURE
 **System Requirements:**
 - Windows 10 or later (64-bit)
 - For Windows on ARM: Windows 11 or later
+
+### JPEG XL Support (v5.3.0)
+
+JPEG XL (`.jxl`) images inside ZIP/CBZ, RAR/CBR, and 7z/CB7 archives can be used for thumbnail previews. The `jxl-oxide` software decoder is bundled; no additional WIC codec installation is necessary. Animated JPEG XL images use only the first frame for a static thumbnail.
 
 ### AVIF Support Policy (v5.2.0)
 
@@ -154,6 +158,7 @@ start explorer.exe
 ### ✅ Phase 3: Image Processing (COMPLETE)
 - [x] Image format detection
 - [x] WebP, AVIF, JPEG, PNG, GIF, BMP, TIFF, ICO support via `image` crate
+- [x] JPEG XL (.jxl) support via bundled `jxl-oxide`
 - [x] High-quality thumbnail generation using `fast_image_resize`
 - [x] HBITMAP conversion for Windows
 - [x] Proper aspect ratio preservation
