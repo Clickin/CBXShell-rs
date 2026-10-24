@@ -65,10 +65,6 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
 
-      - name: Run workspace tests
-        if: matrix.arch == 'x64'
-        run: cargo test --locked --workspace --target x86_64-pc-windows-msvc
-
       - name: Setup NSIS
         shell: pwsh
         run: |
@@ -82,12 +78,31 @@ jobs:
           $makensis = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 
           if (-not $makensis) {
-            if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-              throw "Chocolatey is not available on the runner, and NSIS is not preinstalled"
+            # Portable NSIS avoids Chocolatey feed outages. Pin and verify every download.
+            $nsisRoot = Join-Path $env:RUNNER_TEMP "nsis-portable"
+            $nsisZip = Join-Path $env:RUNNER_TEMP "nsis-3.11.zip"
+            $expectedHash = "c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1"
+            $urls = @(
+              "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11.zip",
+              "http://downloads.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11.zip"
+            )
+            $downloaded = $false
+            foreach ($url in $urls) {
+              try {
+                & curl.exe --fail --location --silent --show-error --max-time 60 --output $nsisZip $url
+                if ($LASTEXITCODE -ne 0) { throw "curl download exited with $LASTEXITCODE" }
+                if ((Get-FileHash -LiteralPath $nsisZip -Algorithm SHA256).Hash -ne $expectedHash) {
+                  throw "NSIS archive SHA256 mismatch (possibly a mirror HTML response)"
+                }
+                $downloaded = $true
+                break
+              } catch {
+                Write-Warning "NSIS download failed from ${url}: $($_.Exception.Message)"
+              }
             }
-
-            choco install nsis --yes --no-progress
-            $makensis = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+            if (-not $downloaded) { throw "Cannot download pinned NSIS distribution" }
+            Expand-Archive -LiteralPath $nsisZip -DestinationPath $nsisRoot -Force
+            $makensis = Join-Path $nsisRoot "nsis-3.11/makensis.exe"
           }
 
           if (-not $makensis -or -not (Test-Path -LiteralPath $makensis)) {
@@ -95,6 +110,10 @@ jobs:
           }
 
           "NSIS_EXE=$makensis" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Run workspace tests
+        if: matrix.arch == 'x64'
+        run: cargo test --locked --workspace --target x86_64-pc-windows-msvc
 
       - name: Build release binaries
         run: cargo build --locked --release --target ${{ matrix.rust_target }}
