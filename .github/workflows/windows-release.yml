@@ -109,6 +109,20 @@ jobs:
         run: |
           & "$env:NSIS_EXE" "/DARCH=${{ matrix.arch }}" "installer.nsi"
 
+      - name: Verify packaged manager resources and startup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $installers = @(Get-ChildItem "dist/CBXShell-rs-Setup-*-${{ matrix.arch }}.exe")
+          if ($installers.Count -ne 1) { throw "Expected exactly one installer" }
+          $staging = Join-Path $env:RUNNER_TEMP ("cbxmanager-smoke-" + [guid]::NewGuid())
+          7z x $installers[0].FullName "-o$staging" cbxmanager.exe cbxshell.dll -y
+          if ($LASTEXITCODE -ne 0) { throw "Installer extraction failed" }
+          $packagedManager = Join-Path $staging "cbxmanager.exe"
+          $builtHash = (Get-FileHash "target/${{ matrix.rust_target }}/release/cbxmanager.exe").Hash
+          if ((Get-FileHash $packagedManager).Hash -ne $builtHash) { throw "Packaged manager differs from built executable" }
+          ./scripts/test-manager-startup.ps1 -Executable $packagedManager -ResourceOnly:('${{ matrix.arch }}' -eq 'ARM64')
+
       - name: Upload installer artifact
         if: ${{ github.actor != 'nektos/act' }}
         uses: actions/upload-artifact@v4

@@ -67,6 +67,11 @@ jobs:
         if: env.ACT != 'true'
         run: cargo build --locked --release --target ${{ matrix.rust_target }}
 
+      - name: Verify manager resources and startup
+        if: env.ACT != 'true'
+        shell: pwsh
+        run: ./scripts/test-manager-startup.ps1 -Executable "target/${{ matrix.rust_target }}/release/cbxmanager.exe" -ResourceOnly:('${{ matrix.arch }}' -eq 'ARM64')
+
       - name: Cargo test (host x64 only)
         if: matrix.run_tests && env.ACT != 'true'
         run: cargo test --locked --target ${{ matrix.rust_target }} --workspace
