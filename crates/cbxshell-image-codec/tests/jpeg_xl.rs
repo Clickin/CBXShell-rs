@@ -45,15 +45,25 @@ fn truncated_jpeg_xl_is_an_error_not_a_partial_thumbnail() {
 #[test]
 fn jpeg_xl_associated_alpha_is_converted_to_straight_rgba() {
     let data = include_bytes!("../../../CBXShell/tests/fixtures/jxl/rgba-associated.jxl");
-    let metadata = jxl_oxide::JxlImage::builder().read(&data[..]).unwrap();
+    let mut metadata = jxl::api::JxlDecoder::new(Default::default());
+    let mut input = &data[..];
+    assert_eq!(
+        metadata.process(&mut input, None, None).unwrap(),
+        jxl::api::Event::BasicInfo
+    );
     assert!(metadata
-        .image_header()
-        .metadata
-        .ec_info
+        .basic_info()
+        .unwrap()
+        .extra_channels
         .iter()
-        .any(|info| info.alpha_associated() == Some(true)));
+        .any(|info| info.alpha_associated));
     let image = decode_rgba_image(data).unwrap();
-    assert_eq!(image.as_pixels(), &[64, 32, 16, 255, 64, 128, 32, 128]);
+    assert_eq!(&image.as_pixels()[..4], &[64, 32, 16, 255]);
+    // Float unpremultiplication can differ by one 8-bit rounding step.
+    for (actual, expected) in image.as_pixels()[4..7].iter().zip([64u8, 128, 32]) {
+        assert!(actual.abs_diff(expected) <= 1);
+    }
+    assert_eq!(image.as_pixels()[7], 128);
 }
 
 #[test]
@@ -75,6 +85,49 @@ fn jpeg_xl_lossy_vardct_decodes() {
                 actual.abs_diff(expected) <= 4,
                 "unexpected pixel: {pixel:?}"
             );
+        }
+    }
+}
+
+#[test]
+fn jpeg_xl_high_resolution_working_memory() {
+    let data = include_bytes!("../../../CBXShell/tests/fixtures/jxl/large-vardct.jxl");
+    let image = decode_rgba_image(data).unwrap();
+    assert_eq!((image.width(), image.height()), (4310, 6083));
+    assert_eq!(image.as_pixels().len(), 4310 * 6083 * 4);
+    for pixel in [
+        image.as_pixels().first_chunk::<4>().unwrap(),
+        image.as_pixels().last_chunk::<4>().unwrap(),
+    ] {
+        for (actual, expected) in pixel.iter().zip([128u8, 64, 32, 255]) {
+            assert!(
+                actual.abs_diff(expected) <= 4,
+                "unexpected pixel: {pixel:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn jpeg_xl_color_profiles_convert_to_srgb() {
+    for (data, expected) in [
+        (
+            &include_bytes!("../../../CBXShell/tests/fixtures/jxl/display-p3.jxl")[..],
+            [138u8, 59, 21, 255],
+        ),
+        (
+            &include_bytes!("../../../CBXShell/tests/fixtures/jxl/gray-gamma.jxl")[..],
+            [146u8, 146, 146, 255],
+        ),
+    ] {
+        let image = decode_rgba_image(data).unwrap();
+        for pixel in image.as_pixels().as_chunks::<4>().0 {
+            for (actual, expected) in pixel.iter().zip(expected) {
+                assert!(
+                    actual.abs_diff(expected) <= 2,
+                    "color-managed pixel: {pixel:?}"
+                );
+            }
         }
     }
 }

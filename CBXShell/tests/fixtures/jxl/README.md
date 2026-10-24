@@ -13,3 +13,10 @@ Encode PNG inputs with `cjxl input.png output.jxl -d 0 -e 3 --container=0`; use 
 
 - `animated.jxl`: two 2 x 1 frames (red then green), encoded from a synthetic GIF with `-d 0 -e 3`; first-frame output is red.
 - `lossy.jxl`: 16 x 16 solid RGB (128,64,32), encoded with `-d 1 -e 3 --modular=0` to exercise lossy VarDCT decoding.
+
+- `large-vardct.jxl`: synthetic 4310 x 6083 solid RGB (128,64,32), encoded with libjxl v0.12.0 `cjxl -d 1 -e 3 --modular=0`. Only 2,673 bytes compressed, but its full-resolution working buffers exceed 256 MiB. Run the memory regression with `cargo test --release -p cbxshell-image-codec --test jpeg_xl jpeg_xl_high_resolution_working_memory`.
+
+- `display-p3.jxl`: 2 x 1 RGB (128,64,32), lossless `cjxl -d 0 -e 3 -x color_space=DisplayP3`; reference sRGB (138,59,21) from LittleCMS via Pillow.
+- `gray-gamma.jxl`: 2 x 1 gray 128 with a gamma-1.8 ICC profile created by moxcms 0.8.1, encoded losslessly from PNG; LittleCMS reference sRGB (146,146,146).
+
+User archives are never included. Opt-in tests in `CBXShell/tests/test_jpeg_xl.rs` accept `CBXSHELL_TEST_ARCHIVE` and `CBXSHELL_TEST_DLL` to verify archive extraction, every JXL page, or a built DLL through its actual COM interface without registration.

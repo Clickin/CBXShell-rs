@@ -10,6 +10,7 @@ rust-version.workspace = true
 cbxshell-core.workspace = true
 image.workspace = true
 cbxshell-image-magic.workspace = true
-jxl-oxide = { version = "0.12.6", default-features = false, features = ["moxcms"] }
+jxl = "0.8.0"
+moxcms = "0.8.1"
 tracing.workspace = true
 windows.workspace = true

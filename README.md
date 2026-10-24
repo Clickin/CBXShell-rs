@@ -21,7 +21,7 @@ Modern Windows Shell Extension for ZIP/RAR/7z comic book archive thumbnail previ
 
 ### Prerequisites
 
-- Rust 1.88+ (stable)
+- Rust 1.89+ (stable)
 - Windows 10 SDK or later
 - Visual Studio Build Tools (for MSVC linker)
 
@@ -69,9 +69,11 @@ $env:PROCESSOR_ARCHITECTURE
 - Windows 10 or later (64-bit)
 - For Windows on ARM: Windows 11 or later
 
-### JPEG XL Support (v5.3.0)
+### JPEG XL Support (v5.3.2)
 
-JPEG XL (`.jxl`) images inside ZIP/CBZ, RAR/CBR, and 7z/CB7 archives can be used for thumbnail previews. The `jxl-oxide` software decoder is bundled; no additional WIC codec installation is necessary. Animated JPEG XL images use only the first frame for a static thumbnail.
+JPEG XL (`.jxl`) images inside ZIP/CBZ, RAR/CBR, and 7z/CB7 archives can be used for thumbnail previews. The `jxl-rs` software decoder is bundled; no additional WIC codec installation is necessary. Animated JPEG XL images use only the first frame for a static thumbnail.
+
+JPEG XL decoding limits RGBA output to 256 MiB, bounds each image/frame's decoder sample count below 268,435,456, and enforces JPEG XL Main Profile Level 5 constraints. These guards are not a total process-memory quota. Archive entries are limited to 32 MiB (the image file size after archive extraction). A small compressed JXL file can require much larger working buffers.
 
 ### AVIF Support Policy (v5.2.0)
 
@@ -158,7 +160,7 @@ start explorer.exe
 ### ✅ Phase 3: Image Processing (COMPLETE)
 - [x] Image format detection
 - [x] WebP, AVIF, JPEG, PNG, GIF, BMP, TIFF, ICO support via `image` crate
-- [x] JPEG XL (.jxl) support via bundled `jxl-oxide`
+- [x] JPEG XL (.jxl) support via bundled `jxl-rs`
 - [x] High-quality thumbnail generation using `fast_image_resize`
 - [x] HBITMAP conversion for Windows
 - [x] Proper aspect ratio preservation
