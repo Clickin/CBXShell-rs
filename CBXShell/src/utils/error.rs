@@ -1,4 +1,4 @@
-///! Error types for CBXShell
+//! Error types for CBXShell
 use thiserror::Error;
 
 #[derive(Error, Debug)]

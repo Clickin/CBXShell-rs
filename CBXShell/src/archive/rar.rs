@@ -1,8 +1,8 @@
-///! RAR/CBR archive implementation
-///!
-///! Supports RAR and CBR formats using the `unrar` crate
+//! RAR/CBR archive implementation
+//!
+//! Supports RAR and CBR formats using the `unrar` crate
 use std::fs::File;
-use std::hash::BuildHasher;
+use std::hash::{BuildHasher, Hash, Hasher};
 use std::io::{Read, Write as IoWrite};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -23,23 +23,18 @@ impl RarArchive {
         tracing::debug!("Opening RAR archive: {:?}", path);
 
         // Validate by attempting to list entries
-        let archive = UnrarArchive::new(path)
+        let mut archive = UnrarArchive::new(path)
             .open_for_listing()
             .map_err(|e| CbxError::Archive(format!("Failed to open RAR archive: {:?}", e)))?;
 
         // Check if archive is accessible
-        let mut has_entries = false;
-        for entry_result in archive {
-            match entry_result {
-                Ok(_) => {
-                    has_entries = true;
-                    break;
-                }
-                Err(e) => {
-                    return Err(CbxError::Archive(format!("RAR listing error: {:?}", e)));
-                }
+        let has_entries = match archive.next() {
+            Some(Ok(_)) => true,
+            Some(Err(e)) => {
+                return Err(CbxError::Archive(format!("RAR listing error: {:?}", e)));
             }
-        }
+            None => false,
+        };
 
         if !has_entries {
             tracing::warn!("RAR archive appears to be empty: {:?}", path);
@@ -293,7 +288,11 @@ impl RarArchiveFromMemory {
             .duration_since(UNIX_EPOCH)
             .map(|d| d.as_millis())
             .unwrap_or(0);
-        let random: u32 = std::collections::hash_map::RandomState::new().hash_one(timestamp) as u32;
+        let random: u32 = {
+            let mut hasher = std::collections::hash_map::RandomState::new().build_hasher();
+            timestamp.hash(&mut hasher);
+            hasher.finish() as u32
+        };
         let thread_id = std::thread::current().id();
         let temp_filename = format!(
             "{}{}_{:?}_{}_{:08x}.tmp",
@@ -575,7 +574,7 @@ impl Archive for RarArchiveFromMemory {
         Ok(ArchiveMetadata {
             total_files,
             image_count,
-            compressed_size: compressed_size,
+            compressed_size,
             archive_type: ArchiveType::Rar,
         })
     }

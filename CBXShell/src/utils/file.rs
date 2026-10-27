@@ -1,6 +1,6 @@
 use crate::archive::ArchiveType;
 use crate::utils::error::{CbxError, Result};
-///! File system utility functions
+//! File system utility functions
 use std::path::Path;
 use widestring::U16CString;
 use windows::core::PCWSTR;

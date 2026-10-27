@@ -1,7 +1,7 @@
+//! Archive format handling
+//!
+//! Supports ZIP, RAR, and 7z formats for comic book archives
 use crate::utils::error::{CbxError, Result};
-///! Archive format handling
-///!
-///! Supports ZIP, RAR, and 7z formats for comic book archives
 use std::path::Path;
 
 mod rar;
@@ -19,6 +19,7 @@ pub use zip::ZipArchive;
 
 // Re-export stream reader utilities (detect_archive_type_from_bytes is used publicly)
 pub use stream_reader::{detect_archive_type_from_bytes, IStreamReader};
+pub use utils::find_first_image;
 
 /// Represents an entry in an archive
 #[derive(Debug, Clone)]

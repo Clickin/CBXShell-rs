@@ -137,12 +137,11 @@ pub fn detect_image_format(data: &[u8]) -> Result<ImageFormat> {
     }
 
     // TIFF: 49 49 2A 00 (little-endian) or 4D 4D 00 2A (big-endian)
-    if data.len() >= 4 {
-        if (data[0] == 0x49 && data[1] == 0x49 && data[2] == 0x2A && data[3] == 0x00)
-            || (data[0] == 0x4D && data[1] == 0x4D && data[2] == 0x00 && data[3] == 0x2A)
-        {
-            return Ok(ImageFormat::Tiff);
-        }
+    if data.len() >= 4
+        && ((data[0] == 0x49 && data[1] == 0x49 && data[2] == 0x2A && data[3] == 0x00)
+            || (data[0] == 0x4D && data[1] == 0x4D && data[2] == 0x00 && data[3] == 0x2A))
+    {
+        return Ok(ImageFormat::Tiff);
     }
 
     // ICO: 00 00 01 00

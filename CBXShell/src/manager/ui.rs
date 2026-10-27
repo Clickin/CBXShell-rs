@@ -1,6 +1,6 @@
-///! Native-windows-gui based UI for CBXManager
-///!
-///! Compact, professional interface with proper alignment and spacing
+//! Native-windows-gui based UI for CBXManager
+//!
+//! Compact, professional interface with proper alignment and spacing
 use super::{cache_ops, cache_regenerate, registry_ops, state::AppState, utils};
 use native_windows_derive as nwd;
 use native_windows_gui as nwg;
@@ -34,7 +34,7 @@ const CHECKBOX_STEP: i32 = 17;
 
 thread_local! {
     static APP_STATE: RefCell<AppState> = RefCell::new(AppState::default());
-    static NEEDS_RESTART: Cell<bool> = Cell::new(false);
+    static NEEDS_RESTART: Cell<bool> = const { Cell::new(false) };
 }
 
 #[derive(Default, NwgUi)]
@@ -122,7 +122,7 @@ pub struct CBXManagerApp {
     #[nwg_control(
         parent: file_group_frame,
         text: "CBZ Image Archives",
-        position: (CHECKBOX_X, CHECKBOX_Y_START + (CHECKBOX_STEP * 0)),
+        position: (CHECKBOX_X, CHECKBOX_Y_START),
         size: (260, 18)
     )]
     cbz_checkbox: nwg::CheckBox,
@@ -130,7 +130,7 @@ pub struct CBXManagerApp {
     #[nwg_control(
         parent: file_group_frame,
         text: "ZIP Archives",
-        position: (CHECKBOX_X, CHECKBOX_Y_START + (CHECKBOX_STEP * 1)),
+        position: (CHECKBOX_X, CHECKBOX_Y_START + CHECKBOX_STEP),
         size: (260, 18)
     )]
     zip_checkbox: nwg::CheckBox,
@@ -520,8 +520,14 @@ pub struct CBXCacheDialog {
     #[nwg_control(parent: window, text: "Location", position: (12, 12), size: (120, 20))]
     location_caption: nwg::Label,
 
-    #[nwg_control(parent: window, text: "", position: (12, 32), size: (366, 20))]
-    location_value: nwg::Label,
+    #[nwg_control(
+        parent: window,
+        text: "",
+        position: (12, 32),
+        size: (366, 24),
+        readonly: true
+    )]
+    location_value: nwg::TextInput,
 
     #[nwg_control(parent: window, text: "Size", position: (12, 60), size: (120, 20))]
     size_caption: nwg::Label,

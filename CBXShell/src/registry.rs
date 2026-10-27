@@ -232,8 +232,9 @@ fn unregister_extension(extension: &str) -> Result<()> {
 /// Register the COM server and shell extension handlers
 ///
 /// # Arguments
-/// * `dll_path` - Optional path to the DLL. If None, will attempt to get path from DllMain module handle.
-///                When calling from an external executable (like CBXManager), you must provide this.
+/// * `dll_path` - Optional path to the DLL. If None, will attempt to get path
+///   from DllMain module handle. When calling from an external executable
+///   (like CBXManager), you must provide this.
 pub fn register_server(dll_path: Option<&str>) -> Result<()> {
     // Get DLL path: use provided path or get from module handle
     let module_path = match dll_path {
@@ -270,22 +271,18 @@ pub fn unregister_server() -> Result<()> {
         "Software\\Microsoft\\Windows\\CurrentVersion\\Shell Extensions\\Approved";
     if let Ok(approved_key) = create_key(HKEY_CURRENT_USER, approved_key_path) {
         unsafe {
-            for clsid in [CLSID_CBXSHELL] {
-                let clsid_str = clsid_string(clsid);
-                let value_name_wide: Vec<u16> = clsid_str.encode_utf16().chain(Some(0)).collect();
-                let _ = RegDeleteValueW(
-                    approved_key,
-                    windows::core::PCWSTR(value_name_wide.as_ptr()),
-                );
-            }
+            let clsid_str = clsid_string(CLSID_CBXSHELL);
+            let value_name_wide: Vec<u16> = clsid_str.encode_utf16().chain(Some(0)).collect();
+            let _ = RegDeleteValueW(
+                approved_key,
+                windows::core::PCWSTR(value_name_wide.as_ptr()),
+            );
             RegCloseKey(approved_key).ok();
         }
     }
 
-    for clsid in [CLSID_CBXSHELL] {
-        let clsid_key_path = format!("Software\\Classes\\CLSID\\{}", clsid_string(clsid));
-        delete_key_recursive(HKEY_CURRENT_USER, &clsid_key_path)?;
-    }
+    let clsid_key_path = format!("Software\\Classes\\CLSID\\{}", clsid_string(CLSID_CBXSHELL));
+    delete_key_recursive(HKEY_CURRENT_USER, &clsid_key_path)?;
 
     // 3. Delete ProgID
     let _ = delete_key_recursive(HKEY_CURRENT_USER, "Software\\Classes\\CBXShell.CBXShell.1");

@@ -1,6 +1,6 @@
-///! Shared utilities for archive processing
-///!
-///! Provides image detection, natural sorting, and common helpers
+//! Shared utilities for archive processing
+//!
+//! Provides image detection, natural sorting, and common helpers
 use std::path::Path;
 
 /// Maximum uncompressed size for a single entry (32MB)
@@ -89,14 +89,14 @@ mod tests {
 
     #[test]
     fn test_find_first_image_sorted() {
-        let files = vec!["readme.txt", "page10.jpg", "page2.jpg", "page1.jpg"];
+        let files = ["readme.txt", "page10.jpg", "page2.jpg", "page1.jpg"];
         let result = find_first_image(files.iter().copied(), true);
         assert_eq!(result, Some("page1.jpg".to_string()));
     }
 
     #[test]
     fn test_find_first_image_unsorted() {
-        let files = vec!["readme.txt", "page10.jpg", "page2.jpg"];
+        let files = ["readme.txt", "page10.jpg", "page2.jpg"];
         let result = find_first_image(files.iter().copied(), false);
         // Should return first encountered image
         assert_eq!(result, Some("page10.jpg".to_string()));
@@ -104,14 +104,14 @@ mod tests {
 
     #[test]
     fn test_find_first_image_no_images() {
-        let files = vec!["readme.txt", "license.md", "notes.doc"];
+        let files = ["readme.txt", "license.md", "notes.doc"];
         let result = find_first_image(files.iter().copied(), true);
         assert_eq!(result, None);
     }
 
     #[test]
     fn test_find_first_image_empty() {
-        let files: Vec<&str> = vec![];
+        let files: [&str; 0] = [];
         let result = find_first_image(files.iter().copied(), true);
         assert_eq!(result, None);
     }

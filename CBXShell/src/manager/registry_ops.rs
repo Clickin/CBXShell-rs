@@ -1,6 +1,6 @@
-///! Registry operations for CBXManager
-///!
-///! Read and write configuration from/to Windows registry
+//! Registry operations for CBXManager
+//!
+//! Read and write configuration from/to Windows registry
 use super::state::AppState;
 use anyhow::{Context, Result};
 use winreg::enums::*;
@@ -22,14 +22,12 @@ const PROGID_KEY_PATH: &str = "Software\\Classes\\CBXShell.CBXShell.1";
 
 /// Read current application state from registry
 pub fn read_app_state() -> Result<AppState> {
-    let mut state = AppState::default();
-
-    // 1. Check DLL registration
-    state.dll_registered = check_dll_registration();
-
-    // 2. Read sort setting
-    state.sort_enabled = read_sort_setting()?;
-    state.sort_preview_enabled = read_sort_preview_setting()?;
+    let mut state = AppState {
+        dll_registered: check_dll_registration(),
+        sort_enabled: read_sort_setting()?,
+        sort_preview_enabled: read_sort_preview_setting()?,
+        ..AppState::default()
+    };
 
     // 3. Check each extension's handler registration
     for ext_config in &mut state.extensions {

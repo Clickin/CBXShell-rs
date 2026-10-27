@@ -1,6 +1,6 @@
-///! Application state management for CBXManager
-///!
-///! Defines the configuration state for the CBXShell extension
+//! Application state management for CBXManager
+//!
+//! Defines the configuration state for the CBXShell extension
 
 /// Configuration for a single file extension
 #[derive(Debug, Clone, PartialEq, Eq)]

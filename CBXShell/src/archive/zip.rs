@@ -1,6 +1,6 @@
-///! ZIP/CBZ archive implementation
-///!
-///! Supports ZIP, CBZ, EPUB, and PHZ formats using the `zip` crate
+//! ZIP/CBZ archive implementation
+//!
+//! Supports ZIP, CBZ, EPUB, and PHZ formats using the `zip` crate
 use std::cell::RefCell;
 use std::fs::File;
 use std::io::{BufReader, Read, Seek};
@@ -179,6 +179,7 @@ impl Archive for ZipArchive {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
     use std::io::Write;

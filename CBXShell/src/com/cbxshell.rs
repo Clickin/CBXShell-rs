@@ -1,9 +1,9 @@
+//! CBXShell main COM object implementation
+//!
 use super::l2_cache;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::AtomicU32;
 use std::sync::Mutex;
-///! CBXShell main COM object implementation
-///!
 use windows::{
     core::*, Win32::Foundation::*, Win32::Graphics::Gdi::HBITMAP, Win32::System::Com::*,
     Win32::UI::Shell::PropertiesSystem::*, Win32::UI::Shell::*,
@@ -26,6 +26,7 @@ pub struct CBXShell {
 
 impl CBXShell {
     /// Create a new CBXShell instance
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Result<IThumbnailProvider> {
         tracing::debug!("Creating CBXShell instance (IThumbnailProvider)");
         crate::utils::debug_log::debug_log("===== CBXShell::new() CALLED =====");
@@ -133,9 +134,7 @@ impl CBXShell {
         use crate::archive::{
             open_archive, open_archive_from_stream, should_sort_images, IStreamReader,
         };
-        use crate::image_processor::decoder::preview::{
-            DecodedPreview, JpegPreviewCodec, PreviewCacheCodec,
-        };
+        use crate::image_processor::decoder::preview::DecodedPreview;
         use crate::image_processor::thumbnail::render_canonical_proxy;
         use crate::utils::error::CbxError;
         use cbxshell_thumbnail_cache::store::ThumbnailCache;
@@ -159,7 +158,8 @@ impl CBXShell {
         crate::utils::debug_log::debug_log(&format!("Step 4: Sort preference: {}", sort));
 
         // === L2 cache lookup (plan sections 4 and 8) ===
-        let identity = l2_cache::resolve_source_identity(file_path.as_deref(), stream.as_ref());
+        let identity =
+            l2_cache::resolve_source_identity(file_path.as_deref(), stream.as_ref(), sort);
         if identity.is_none() {
             match (file_path.as_deref(), stream.as_ref()) {
                 (Some(_), _) => crate::utils::debug_log::debug_log(
@@ -195,11 +195,9 @@ impl CBXShell {
         if let Some((cache, identity, variant)) = l2.as_ref() {
             match cache.load(identity, variant) {
                 Ok(Some(encoded)) => {
-                    let hit = JpegPreviewCodec::default()
-                        .decode(&encoded)
-                        .and_then(|proxy| {
-                            l2_cache::proxy_to_hbitmap(&proxy, cx).map(|hbitmap| (proxy, hbitmap))
-                        });
+                    let hit = l2_cache::decode_proxy(&encoded).and_then(|proxy| {
+                        l2_cache::proxy_to_hbitmap(&proxy, cx).map(|hbitmap| (proxy, hbitmap))
+                    });
                     match hit {
                         Ok((proxy, hbitmap)) => {
                             crate::utils::debug_log::debug_log(&format!(
@@ -343,11 +341,8 @@ impl CBXShell {
                 Ok(canonical) => {
                     // Best-effort persistence: store failures never affect
                     // the extraction result (plan goal 10).
-                    match JpegPreviewCodec::default().encode(
-                        canonical.width,
-                        canonical.height,
-                        &canonical.rgba,
-                    ) {
+                    match l2_cache::encode_proxy(canonical.width, canonical.height, &canonical.rgba)
+                    {
                         Ok(encoded) => match cache.store(identity, variant, &encoded) {
                             Ok(()) => crate::utils::debug_log::debug_log(&format!(
                                 "L2 CACHE STORE (source={}, proxy={}x{}, bytes={})",
@@ -536,6 +531,7 @@ impl IInitializeWithFile_Impl for CBXShell {
 
 // IThumbnailProvider implementation (replaces IExtractImage/IExtractImage2)
 impl IThumbnailProvider_Impl for CBXShell {
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn GetThumbnail(
         &self,
         cx: u32,

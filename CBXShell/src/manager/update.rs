@@ -550,8 +550,8 @@ fn fetch_release_response_body() -> Result<String> {
             body.extend_from_slice(&buffer[..bytes_read as usize]);
         }
 
-        Ok(String::from_utf8(body)
-            .map_err(|e| anyhow::anyhow!("GitHub API response was not UTF-8: {}", e))?)
+        String::from_utf8(body)
+            .map_err(|e| anyhow::anyhow!("GitHub API response was not UTF-8: {}", e))
     }
 }
 

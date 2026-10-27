@@ -1,7 +1,7 @@
+//! 7-Zip archive implementation
+//!
+//! Supports 7z and CB7 formats using the `sevenz-rust` crate
 use sevenz_rust::{Password, SevenZReader};
-///! 7-Zip archive implementation
-///!
-///! Supports 7z and CB7 formats using the `sevenz-rust` crate
 use std::fs::File;
 use std::io::{Read, Seek};
 use std::path::{Path, PathBuf};
@@ -211,6 +211,7 @@ impl Archive for SevenZipArchive {
 }
 
 #[cfg(test)]
+#[allow(clippy::items_after_test_module)]
 mod tests {
     use super::*;
     use sevenz_rust::SevenZWriter;

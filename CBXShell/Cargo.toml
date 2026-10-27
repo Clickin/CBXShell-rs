@@ -16,6 +16,8 @@ cbxshell-core.workspace = true
 cbxshell-archive.workspace = true
 cbxshell-image.workspace = true
 cbxshell-thumbnail-cache.workspace = true
+sha2.workspace = true
+zip.workspace = true
 windows.workspace = true
 winreg.workspace = true
 tracing.workspace = true
@@ -23,7 +25,6 @@ tracing-subscriber.workspace = true
 
 [dev-dependencies]
 image.workspace = true
-zip.workspace = true
 
 [features]
 default = []

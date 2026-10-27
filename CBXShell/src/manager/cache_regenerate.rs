@@ -2,12 +2,11 @@
 //! and 12: Regenerate Thumbnails UI).
 //!
 //! Regeneration is manager-owned and runs outside the shell extension:
-//! per archive it first invalidates the CBXShell L2 source entry, then
-//! asks Windows (`IThumbnailCache::GetThumbnail` with `WTS_FORCEEXTRACTION`)
-//! to re-extract. Windows invokes the CBXShell provider in its surrogate,
-//! which sees an L2 miss, re-renders, stores a fresh canonical proxy and
-//! lets Windows warm its own L1 (plan section 13.1) — no `thumbcache_*.db`
-//! deletion and no Explorer restart anywhere.
+//! per archive it invalidates the CBXShell L2 source entry, then warms L2
+//! directly and asks Windows (`IThumbnailCache::GetThumbnail` with
+//! `WTS_FORCEEXTRACTION`) to warm L1 in parallel. L2 no longer depends on
+//! Windows invoking the provider before it populates its own cache — no
+//! `thumbcache_*.db` deletion and no Explorer restart anywhere.
 //!
 //! Global scope ("invalidate entire cache") instead bumps the persistent
 //! `CacheGeneration` once (plan sections 13.3 and 5.4) so every previous L2
@@ -23,16 +22,17 @@ use std::sync::{Arc, Mutex};
 use std::thread;
 
 use anyhow::{anyhow, Context, Result};
-use windows::core::{HRESULT, PCWSTR};
+use windows::core::{ComInterface, GUID, HRESULT, PCWSTR};
 use windows::Win32::Foundation::{ERROR_CANCELLED, HWND};
+use windows::Win32::Graphics::Gdi::{DeleteObject, HBITMAP};
 use windows::Win32::System::Com::{
     CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER,
-    COINIT_APARTMENTTHREADED,
+    COINIT_APARTMENTTHREADED, STGM_READ,
 };
 use windows::Win32::UI::Shell::{
-    FileOpenDialog, IFileOpenDialog, ISharedBitmap, IShellItem, IThumbnailCache,
-    LocalThumbnailCache, SHCreateItemFromParsingName, FOS_PICKFOLDERS, SIGDN_FILESYSPATH,
-    WTS_CACHEFLAGS, WTS_FORCEEXTRACTION,
+    FileOpenDialog, IFileOpenDialog, IInitializeWithItem, ISharedBitmap, IShellItem,
+    IThumbnailCache, IThumbnailProvider, LocalThumbnailCache, SHCreateItemFromParsingName,
+    FOS_PICKFOLDERS, SIGDN_FILESYSPATH, WTS_ALPHATYPE, WTS_CACHEFLAGS, WTS_FORCEEXTRACTION,
 };
 
 use super::cache_ops;
@@ -43,6 +43,8 @@ use cbxshell_thumbnail_cache::store::ThumbnailCache;
 /// currently supported/registered extensions; section 14: no invented
 /// library catalog — the user-selected folder is the whole scope).
 const ARCHIVE_EXTENSIONS: [&str; 6] = ["zip", "cbz", "rar", "cbr", "7z", "cb7"];
+
+const CBXSHELL_CLSID: GUID = GUID::from_u128(0x9E6ECB90_5A61_42BD_B851_D3297D9C7F39);
 
 /// Depth cap so a pathological (or junction-looped) tree cannot recurse
 /// forever. Mirrors the cache maintenance walker's bound.
@@ -64,7 +66,7 @@ pub struct RegenReport {
 /// Case-insensitive check against the six registered archive extensions.
 fn is_archive(path: &Path) -> bool {
     let ext = path.extension().and_then(|ext| ext.to_str());
-    ext.map_or(false, |ext| {
+    ext.is_some_and(|ext| {
         ARCHIVE_EXTENSIONS
             .iter()
             .any(|known| ext.eq_ignore_ascii_case(known))
@@ -146,27 +148,75 @@ pub fn run_regeneration(
         }
     });
 
-    let report = report.into_inner().expect("regen report lock");
-    report
+    report.into_inner().expect("regen report lock")
 }
 
-/// One regeneration unit (plan section 13.1): invalidate the CBXShell L2
-/// source entry first, then force Windows extraction at the default 256 px
-/// thumbnail size. `WTS_FORCEEXTRACTION` (never a no-cache variant) keeps
-/// L1 caching enabled, so afterwards both L2 and L1 are warm.
-///
-/// `invalidate_l2` is false for global-scope runs: the generation was
-/// already bumped once up front, so per-source invalidation would be
-/// redundant (plan section 13.4: do not mix scopes).
-pub fn regenerate_one(path: &Path, invalidate_l2: bool) -> Result<(), String> {
-    if invalidate_l2 {
-        let cache =
-            ThumbnailCache::with_default_root().map_err(|e| format!("L2 open failed: {e}"))?;
-        cache
-            .invalidate_source(path)
-            .map_err(|e| format!("L2 invalidate failed: {e}"))?;
+fn run_l1_l2_in_parallel<L2, L1>(l2: L2, l1: L1) -> Result<(), String>
+where
+    L2: FnOnce() -> Result<(), String> + Send,
+    L1: FnOnce() -> Result<(), String> + Send,
+{
+    let (l2_result, l1_result) = thread::scope(|scope| {
+        let l2_handle = scope.spawn(l2);
+        let l1_handle = scope.spawn(l1);
+        let l2_result = l2_handle
+            .join()
+            .map_err(|_| "L2 warm-up thread panicked".to_string())
+            .and_then(|result| result);
+        let l1_result = l1_handle
+            .join()
+            .map_err(|_| "L1 warm-up thread panicked".to_string())
+            .and_then(|result| result);
+        (l2_result, l1_result)
+    });
+
+    match (l2_result, l1_result) {
+        (Ok(()), Ok(())) => Ok(()),
+        (Err(l2_error), Ok(())) => Err(format!("L2 warm-up failed: {l2_error}")),
+        (Ok(()), Err(l1_error)) => Err(format!("L1 warm-up failed: {l1_error}")),
+        (Err(l2_error), Err(l1_error)) => Err(format!(
+            "L2 warm-up failed: {l2_error}; L1 warm-up failed: {l1_error}"
+        )),
+    }
+}
+
+fn warm_l2(path: &Path) -> Result<(), String> {
+    let _com = ComGuard::init()?;
+    let path_wide = to_wide_null_terminated(path);
+    let item: IShellItem = unsafe {
+        SHCreateItemFromParsingName(PCWSTR::from_raw(path_wide.as_ptr()), None)
+            .map_err(|e| format!("L2 shell item creation failed: {e}"))?
+    };
+    let provider: IThumbnailProvider = unsafe {
+        CoCreateInstance(&CBXSHELL_CLSID, None, CLSCTX_INPROC_SERVER)
+            .map_err(|e| format!("L2 provider creation failed: {e}"))?
+    };
+    let initializer: IInitializeWithItem = provider
+        .cast()
+        .map_err(|e| format!("L2 item initializer unavailable: {e}"))?;
+    unsafe {
+        initializer
+            .Initialize(Some(&item), STGM_READ.0)
+            .map_err(|e| format!("L2 item initialization failed: {e}"))?;
     }
 
+    let thumbnail: IThumbnailProvider = provider;
+    let mut bitmap = HBITMAP::default();
+    let mut alpha = WTS_ALPHATYPE::default();
+    let result = unsafe {
+        thumbnail
+            .GetThumbnail(256, &mut bitmap, &mut alpha)
+            .map_err(|e| format!("L2 thumbnail extraction failed: {e}"))
+    };
+    if bitmap.0 != 0 {
+        unsafe {
+            let _ = DeleteObject(bitmap);
+        }
+    }
+    result
+}
+
+fn warm_l1(path: &Path) -> Result<(), String> {
     let _com = ComGuard::init()?;
     unsafe {
         let path_wide = to_wide_null_terminated(path);
@@ -190,10 +240,29 @@ pub fn regenerate_one(path: &Path, invalidate_l2: bool) -> Result<(), String> {
                 None,
             )
             .map_err(|e| format!("Force extraction failed: {e}"))?;
-        // The bitmap itself is not needed; Windows has cached the thumbnail
-        // in L1, and CBXShell stored a fresh L2 proxy during extraction.
     }
     Ok(())
+}
+
+/// One regeneration unit (plan section 13.1): invalidate the CBXShell L2
+/// source entry first, then warm L2 directly and force Windows extraction at
+/// the default 256 px thumbnail size in parallel. `WTS_FORCEEXTRACTION`
+/// (never a no-cache variant) keeps L1 caching enabled, so afterwards both
+/// L2 and L1 are warm.
+///
+/// `invalidate_l2` is false for global-scope runs: the generation was
+/// already bumped once up front, so per-source invalidation would be
+/// redundant (plan section 13.4: do not mix scopes).
+pub fn regenerate_one(path: &Path, invalidate_l2: bool) -> Result<(), String> {
+    if invalidate_l2 {
+        let cache =
+            ThumbnailCache::with_default_root().map_err(|e| format!("L2 open failed: {e}"))?;
+        cache
+            .invalidate_source(path)
+            .map_err(|e| format!("L2 invalidate failed: {e}"))?;
+    }
+
+    run_l1_l2_in_parallel(|| warm_l2(path), || warm_l1(path))
 }
 
 /// Show a folder picker (IFileDialog with FOS_PICKFOLDERS). Returns `None`
@@ -271,7 +340,7 @@ struct RegenDialogState {
 thread_local! {
     static REGEN_DIALOG: RefCell<Option<CBXRegenDialogUi>> = const { RefCell::new(None) };
     static REGEN_DIALOG_STATE: RefCell<RegenDialogState> =
-        RefCell::new(RegenDialogState { folder: None });
+        const { RefCell::new(RegenDialogState { folder: None }) };
     static REGEN_PROGRESS: RefCell<Option<CBXRegenProgressUi>> = const { RefCell::new(None) };
     static REGEN_RUNTIME: RefCell<Option<RegenRuntime>> = const { RefCell::new(None) };
 }
@@ -661,11 +730,12 @@ fn show_regen_summary(report: &RegenReport) {
 
 #[cfg(test)]
 mod tests {
-    use super::{collect_archives, run_regeneration, RegenReport};
+    use super::{collect_archives, run_l1_l2_in_parallel, run_regeneration};
     use std::fs;
     use std::path::{Path, PathBuf};
     use std::process::Command;
     use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+    use std::sync::{Arc, Barrier};
     use std::thread;
     use std::time::Duration;
     use tempfile::TempDir;
@@ -833,5 +903,37 @@ mod tests {
             failed_paths,
             vec![PathBuf::from("bad1.cbz"), PathBuf::from("bad2.cbz")]
         );
+    }
+
+    #[test]
+    fn l1_and_l2_warmups_run_in_parallel() {
+        let barrier = Arc::new(Barrier::new(2));
+        let l1_started = Arc::new(AtomicBool::new(false));
+        let l2_started = Arc::new(AtomicBool::new(false));
+
+        run_l1_l2_in_parallel(
+            {
+                let barrier = Arc::clone(&barrier);
+                let started = Arc::clone(&l1_started);
+                move || {
+                    started.store(true, Ordering::SeqCst);
+                    barrier.wait();
+                    Ok(())
+                }
+            },
+            {
+                let barrier = Arc::clone(&barrier);
+                let started = Arc::clone(&l2_started);
+                move || {
+                    started.store(true, Ordering::SeqCst);
+                    barrier.wait();
+                    Ok(())
+                }
+            },
+        )
+        .expect("parallel warm-ups should succeed");
+
+        assert!(l1_started.load(Ordering::SeqCst));
+        assert!(l2_started.load(Ordering::SeqCst));
     }
 }

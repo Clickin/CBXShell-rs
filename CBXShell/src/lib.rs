@@ -19,9 +19,9 @@ pub mod registry;
 mod sort_config;
 
 pub mod archive {
+    pub use crate::sort_config::{set_should_sort_images, should_sort_images};
     pub use cbxshell_archive::*;
     pub use cbxshell_image::verify_image_data;
-    pub use crate::sort_config::{set_should_sort_images, should_sort_images};
 }
 
 pub mod image_processor {
@@ -136,6 +136,7 @@ pub extern "system" fn DllCanUnloadNow() -> HRESULT {
 ///
 /// Returns a class factory for the requested CLSID
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "system" fn DllGetClassObject(
     rclsid: *const GUID,
     riid: *const GUID,

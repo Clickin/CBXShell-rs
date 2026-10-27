@@ -1,9 +1,9 @@
 #![windows_subsystem = "windows"]
 
 mod registry_ops;
-///! CBXManager - Native configuration utility for CBXShell
-///!
-///! Built with native-windows-gui for a Windows-native interface
+//! CBXManager - Native configuration utility for CBXShell
+//!
+//! Built with native-windows-gui for a Windows-native interface
 mod state;
 mod ui;
 mod utils;

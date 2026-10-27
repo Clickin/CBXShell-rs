@@ -159,6 +159,22 @@ fn delete_counted(file: &ScannedFile, report: &mut MaintenanceReport) -> bool {
     }
 }
 
+fn is_link_or_reparse_point(meta: &fs::Metadata) -> bool {
+    if meta.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
+        meta.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
+    }
+    #[cfg(not(windows))]
+    {
+        false
+    }
+}
+
 /// Recursively collect files under `root`. The layout is shard/source/file
 /// (three levels below the root); the depth cap keeps a pathological tree
 /// from recursing without bound. Failures increment `skipped` instead of
@@ -167,6 +183,13 @@ fn collect_files(dir: &Path, depth: u8, out: &mut Vec<ScannedFile>, skipped: &mu
     if depth > 3 {
         *skipped += 1;
         return;
+    }
+    match fs::symlink_metadata(dir) {
+        Ok(meta) if is_link_or_reparse_point(&meta) => {
+            *skipped += 1;
+            return;
+        }
+        _ => {}
     }
     let read = match fs::read_dir(dir) {
         Ok(read) => read,
@@ -187,13 +210,17 @@ fn collect_files(dir: &Path, depth: u8, out: &mut Vec<ScannedFile>, skipped: &mu
             }
         };
         let path = entry.path();
-        let meta = match fs::metadata(&path) {
+        let meta = match fs::symlink_metadata(&path) {
             Ok(meta) => meta,
             Err(_) => {
                 *skipped += 1;
                 continue;
             }
         };
+        if is_link_or_reparse_point(&meta) {
+            *skipped += 1;
+            continue;
+        }
         if meta.is_dir() {
             collect_files(&path, depth + 1, out, skipped);
             continue;
@@ -257,10 +284,31 @@ mod tests {
         let source = source(wide);
         let variant = variant();
         cache
-            .store(&source, &variant, &vec![b'x'; 100])
+            .store(&source, &variant, &[b'x'; 100])
             .expect("storing test entry");
         set_mtime(&cache.entry_path(&source, &variant), mtime_secs);
         (source, variant)
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn maintenance_does_not_follow_directory_junctions() {
+        let root = TempDir::new().unwrap();
+        let outside = TempDir::new().unwrap();
+        let victim = outside.path().join("victim.tmp");
+        fs::write(&victim, b"keep").unwrap();
+        set_mtime(&victim, 1);
+        let junction = root.path().join("junction");
+        let status = std::process::Command::new("cmd")
+            .args(["/C", "mklink", "/J"])
+            .arg(&junction)
+            .arg(outside.path())
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let cache = ThumbnailCache::new(root.path().to_path_buf());
+        cache.maintenance(CacheLimits::default()).unwrap();
+        assert!(victim.exists(), "maintenance deleted a file outside the cache");
     }
 
     #[test]

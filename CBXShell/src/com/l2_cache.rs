@@ -6,8 +6,9 @@
 //! * [`resolve_source_identity`] builds the O(metadata)
 //!   [`SourceIdentity`] from either a filesystem path
 //!   (IInitializeWithFile/IInitializeWithItem) or an `IStream::Stat` name
-//!   (IInitializeWithStream). Anonymous or non-path-like streams yield
-//!   `None` and the caller bypasses the cache entirely (plan section 4.4).
+//!   (IInitializeWithStream). Streams without an absolute locator use a
+//!   ZIP cover identity, reading only the directory and selected image.
+//!   Other streams without an absolute locator bypass L2.
 //! * [`build_variant`] wires the source metadata together with the
 //!   rendering/configuration state ([`RENDERER_REVISION`],
 //!   [`PROXY_MAX_DIMENSION`], [`CACHE_CODEC_REVISION`], sort policy, and
@@ -20,19 +21,24 @@
 //! extraction path. No cache failure may ever fail `GetThumbnail`
 //! (plan goal 10).
 
+use sha2::{Digest, Sha256};
+use std::io::{Read, Seek};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cbxshell_thumbnail_cache::key::{CacheVariant, SourceIdentity};
 use windows::Win32::Foundation::FILETIME;
 use windows::Win32::Graphics::Gdi::HBITMAP;
-use windows::Win32::System::Com::{CoTaskMemFree, IStream, STATFLAG_DEFAULT, STATSTG};
+use windows::Win32::System::Com::{
+    CoTaskMemFree, IStream, STATFLAG_DEFAULT, STATSTG, STREAM_SEEK_CUR, STREAM_SEEK_SET,
+};
 use winreg::enums::*;
 use winreg::RegKey;
 
 use super::cbxshell::CBXShell;
 use crate::image_processor::decoder::preview::{
-    DecodedPreview, CACHE_CODEC_REVISION, PROXY_MAX_DIMENSION,
+    DecodedPreview, PreviewCacheCodec, WebpLosslessPreviewCodec, CACHE_CODEC_REVISION,
+    PROXY_MAX_DIMENSION,
 };
 use crate::image_processor::hbitmap;
 use crate::image_processor::resizer::{self, ResizeFilter};
@@ -76,13 +82,13 @@ pub(crate) fn systemtime_to_filetime_u64(modified: SystemTime) -> u64 {
 ///
 /// A filesystem path wins (IInitializeWithFile/IInitializeWithItem);
 /// otherwise the IStream's `Stat` name is used when it normalizes to an
-/// absolute path. Any failure — unreadable metadata, anonymous stream,
-/// non-path-like name — returns `None` and the caller must bypass the L2
-/// cache entirely (plan section 4.4: correctness beats caching anonymous
-/// streams).
+/// absolute path. ZIP streams with only a filename or no name hash the
+/// selected image, preserving cover selection and avoiding archive-wide reads.
+/// Other unresolved streams bypass L2. The original position is restored.
 pub(crate) fn resolve_source_identity(
     file_path: Option<&Path>,
     stream: Option<&IStream>,
+    sort: bool,
 ) -> Option<SourceIdentity> {
     if let Some(path) = file_path {
         let meta = std::fs::metadata(path).ok()?;
@@ -96,11 +102,11 @@ pub(crate) fn resolve_source_identity(
     let stream = stream?;
     let mut stat: STATSTG = unsafe { std::mem::zeroed() };
     if unsafe { stream.Stat(&mut stat, STATFLAG_DEFAULT) }.is_err() {
-        return None;
+        return resolve_stream_content_identity(stream, sort);
     }
 
     if stat.pwcsName.is_null() {
-        return None;
+        return resolve_stream_content_identity(stream, sort);
     }
 
     let raw_name = stat.pwcsName;
@@ -110,12 +116,65 @@ pub(crate) fn resolve_source_identity(
     }
 
     // Only an absolute, path-like name is a stable locator.
-    let path = CBXShell::normalize_stream_name_to_path(&name_result.ok()?)?;
+    let path = name_result
+        .ok()
+        .and_then(|name| CBXShell::normalize_stream_name_to_path(&name));
+    let Some(path) = path else {
+        return resolve_stream_content_identity(stream, sort);
+    };
 
     let mut identity = SourceIdentity::from_path(&path);
     identity.size = stat.cbSize;
     identity.modified_filetime = filetime_to_u64(&stat.mtime);
     Some(identity)
+}
+
+fn resolve_stream_content_identity(stream: &IStream, sort: bool) -> Option<SourceIdentity> {
+    let mut original_position = 0;
+    unsafe { stream.Seek(0, STREAM_SEEK_CUR, Some(&mut original_position)) }.ok()?;
+    let original_position = i64::try_from(original_position).ok()?;
+    let result = zip_cover_identity(crate::archive::IStreamReader::new(stream.clone()), sort);
+    unsafe { stream.Seek(original_position, STREAM_SEEK_SET, None) }.ok()?;
+    result
+}
+
+fn zip_cover_identity(reader: impl Read + Seek, sort: bool) -> Option<SourceIdentity> {
+    let mut archive = zip::ZipArchive::new(reader).ok()?;
+    let name = if sort {
+        crate::archive::find_first_image(archive.file_names(), true)?
+    } else {
+        (0..archive.len()).find_map(|index| {
+            let entry = archive.by_index(index).ok()?;
+            crate::image_processor::is_image_file(entry.name()).then(|| entry.name().to_owned())
+        })?
+    };
+    let mut entry = archive.by_name(&name).ok()?;
+    const MAX_COVER_BYTES: u64 = 32 * 1024 * 1024;
+    if entry.size() > MAX_COVER_BYTES || entry.compressed_size() > MAX_COVER_BYTES {
+        return None;
+    }
+    let mut digest = Sha256::new();
+    digest.update((name.len() as u64).to_le_bytes());
+    digest.update(name.as_bytes());
+    let mut buffer = [0u8; 64 * 1024];
+    let mut size = 0u64;
+    loop {
+        let count = entry.read(&mut buffer).ok()?;
+        if count == 0 {
+            break;
+        }
+        size = size.checked_add(count as u64)?;
+        if size > MAX_COVER_BYTES {
+            return None;
+        }
+        digest.update(&buffer[..count]);
+    }
+    let locator = format!("cbxshell:zip-cover:sha256:{:x}", digest.finalize());
+    Some(SourceIdentity {
+        locator_wide: locator.encode_utf16().collect(),
+        size,
+        modified_filetime: 0,
+    })
 }
 
 /// Build the cache variant identity (plan section 5.2): source metadata
@@ -136,6 +195,14 @@ pub(crate) fn build_variant(
         proxy_max_dimension: PROXY_MAX_DIMENSION,
         cache_codec_revision: CACHE_CODEC_REVISION,
     }
+}
+
+pub(crate) fn encode_proxy(width: u32, height: u32, rgba: &[u8]) -> Result<Vec<u8>> {
+    WebpLosslessPreviewCodec.encode(width, height, rgba)
+}
+
+pub(crate) fn decode_proxy(data: &[u8]) -> Result<DecodedPreview> {
+    WebpLosslessPreviewCodec.decode(data)
 }
 
 /// Read the logical cache generation from
@@ -267,7 +334,7 @@ mod tests {
         std::fs::write(&path, [0xDE, 0xAD, 0xBE, 0xEF]).expect("write temp file");
 
         let identity =
-            resolve_source_identity(Some(&path), None).expect("identity for a real file");
+            resolve_source_identity(Some(&path), None, false).expect("identity for a real file");
 
         assert!(!identity.locator_wide.is_empty());
         assert_eq!(identity.size, 4);
@@ -279,6 +346,73 @@ mod tests {
     #[test]
     fn resolve_source_identity_missing_file_is_none() {
         let path = unique_temp_path("missing");
-        assert!(resolve_source_identity(Some(&path), None).is_none());
+        assert!(resolve_source_identity(Some(&path), None, false).is_none());
+    }
+
+    #[test]
+    fn cache_proxy_encoding_produces_a_webp_entry() {
+        let rgba = vec![
+            0xE0, 0x10, 0x20, 0xFF, 0x30, 0x40, 0x50, 0xFF, 0x60, 0x70, 0x80, 0xFF, 0x90, 0xA0,
+            0xB0, 0xFF,
+        ];
+
+        let encoded = encode_proxy(2, 2, &rgba).expect("cache proxy should encode");
+
+        assert_eq!(&encoded[0..4], b"RIFF");
+        assert_eq!(&encoded[8..12], b"WEBP");
+        let decoded = decode_proxy(&encoded).expect("cache proxy should decode");
+        assert_eq!((decoded.width, decoded.height), (2, 2));
+    }
+
+    #[test]
+    fn zip_identity_reads_only_selected_cover_for_both_sort_settings() {
+        use std::io::{Cursor, SeekFrom, Write};
+
+        struct CountedReader {
+            cursor: Cursor<Vec<u8>>,
+            bytes_read: usize,
+        }
+        impl Read for CountedReader {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                let count = self.cursor.read(buffer)?;
+                self.bytes_read += count;
+                Ok(count)
+            }
+        }
+        impl Seek for CountedReader {
+            fn seek(&mut self, position: SeekFrom) -> std::io::Result<u64> {
+                self.cursor.seek(position)
+            }
+        }
+
+        let mut writer = zip::ZipWriter::new(Cursor::new(Vec::new()));
+        let options =
+            zip::write::FileOptions::default().compression_method(zip::CompressionMethod::Stored);
+        writer.start_file("z.png", options).unwrap();
+        writer.write_all(&[1; 4096]).unwrap();
+        writer.start_file("bulk.bin", options).unwrap();
+        writer.write_all(&vec![0; 16 * 1024 * 1024]).unwrap();
+        writer.start_file("a.png", options).unwrap();
+        writer.write_all(&[2; 2048]).unwrap();
+        let mut reader = CountedReader {
+            cursor: writer.finish().unwrap(),
+            bytes_read: 0,
+        };
+
+        for (sort, expected_size) in [(false, 4096), (true, 2048)] {
+            reader.bytes_read = 0;
+            reader.cursor.set_position(0);
+            let identity = zip_cover_identity(&mut reader, sort).unwrap();
+            assert_eq!(identity.size, expected_size);
+            assert!(
+                reader.bytes_read < 256 * 1024,
+                "read {} bytes",
+                reader.bytes_read
+            );
+            eprintln!(
+                "sort={sort}: {} bytes read from 16 MiB ZIP",
+                reader.bytes_read
+            );
+        }
     }
 }

@@ -1,5 +1,6 @@
+//! COM Class Factory implementation
+//!
 use std::sync::atomic::AtomicU32;
-///! COM Class Factory implementation
 use windows::{core::*, Win32::Foundation::*, Win32::System::Com::*};
 
 use super::CBXShell;
@@ -13,6 +14,7 @@ pub struct ClassFactory {
 
 impl ClassFactory {
     /// Create a new class factory
+    #[allow(clippy::new_ret_no_self)]
     pub fn new() -> Result<IClassFactory> {
         tracing::debug!("Creating ClassFactory");
 
@@ -27,6 +29,7 @@ impl ClassFactory {
 
 impl IClassFactory_Impl for ClassFactory {
     /// Create an instance of CBXShell
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn CreateInstance(
         &self,
         punkouter: Option<&IUnknown>,

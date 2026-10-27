@@ -242,7 +242,7 @@ dependencies = [
 
 [[package]]
 name = "cbxmanager"
-version = "5.3.2"
+version = "5.4.0"
 dependencies = [
  "cbxshell-gui-win",
  "winres",
@@ -250,12 +250,14 @@ dependencies = [
 
 [[package]]
 name = "cbxshell"
-version = "5.3.2"
+version = "5.4.0"
 dependencies = [
  "cbxshell-archive",
  "cbxshell-core",
  "cbxshell-image",
+ "cbxshell-thumbnail-cache",
  "image",
+ "sha2",
  "tracing",
  "tracing-subscriber",
  "windows",
@@ -265,7 +267,7 @@ dependencies = [
 
 [[package]]
 name = "cbxshell-archive"
-version = "5.3.2"
+version = "5.4.0"
 dependencies = [
  "cbxshell-core",
  "natord",
@@ -279,7 +281,7 @@ dependencies = [
 
 [[package]]
 name = "cbxshell-bitmap-win"
-version = "5.3.2"
+version = "5.4.0"
 dependencies = [
  "cbxshell-core",
  "windows",
@@ -287,26 +289,28 @@ dependencies = [
 
 [[package]]
 name = "cbxshell-core"
-version = "5.3.2"
+version = "5.4.0"
 dependencies = [
  "thiserror 1.0.69",
 ]
 
 [[package]]
 name = "cbxshell-gui-win"
-version = "5.3.2"
+version = "5.4.0"
 dependencies = [
  "anyhow",
  "cbxshell-core",
+ "cbxshell-thumbnail-cache",
  "native-windows-derive",
  "native-windows-gui",
+ "tempfile",
  "windows",
  "winreg",
 ]
 
 [[package]]
 name = "cbxshell-image"
-version = "5.3.2"
+version = "5.4.0"
 dependencies = [
  "cbxshell-bitmap-win",
  "cbxshell-image-codec",
@@ -317,7 +321,7 @@ dependencies = [
 
 [[package]]
 name = "cbxshell-image-codec"
-version = "5.3.2"
+version = "5.4.0"
 dependencies = [
  "cbxshell-core",
  "cbxshell-image-magic",
@@ -330,7 +334,7 @@ dependencies = [
 
 [[package]]
 name = "cbxshell-image-magic"
-version = "5.3.2"
+version = "5.4.0"
 dependencies = [
  "cbxshell-core",
  "tracing",
@@ -338,7 +342,7 @@ dependencies = [
 
 [[package]]
 name = "cbxshell-image-resize"
-version = "5.3.2"
+version = "5.4.0"
 dependencies = [
  "cbxshell-core",
  "fast_image_resize",
@@ -346,8 +350,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cbxshell-thumbnail-cache"
+version = "5.4.0"
+dependencies = [
+ "filetime",
+ "sha2",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "cbxshell-thumbnail-win"
-version = "5.3.2"
+version = "5.4.0"
 dependencies = [
  "cbxshell-bitmap-win",
  "cbxshell-core",

@@ -124,7 +124,7 @@ pub fn create_hbitmap_from_bgra(bgra_data: &[u8], width: u32, height: u32) -> Re
                 biHeight: -(height as i32), // Negative for top-down DIB
                 biPlanes: 1,
                 biBitCount: 32, // 32-bit RGBA
-                biCompression: BI_RGB.0 as u32,
+                biCompression: BI_RGB.0,
                 biSizeImage: 0,
                 biXPelsPerMeter: 0,
                 biYPelsPerMeter: 0,

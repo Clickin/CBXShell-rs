@@ -1,7 +1,7 @@
+//! Configuration management for archive processing
+//!
+//! Reads settings from the Windows registry
 use winreg::enums::*;
-///! Configuration management for archive processing
-///!
-///! Reads settings from the Windows registry
 use winreg::RegKey;
 
 const CONFIG_KEY_PATH: &str = "Software\\CBXShell-rs\\{9E6ECB90-5A61-42BD-B851-D3297D9C7F39}";
@@ -67,19 +67,18 @@ mod tests {
     fn test_read_no_sort_default() {
         // Should default to sorting if key doesn't exist
         // (This test will pass even if registry key exists)
-        let result = should_sort_images();
-        assert!(result == true || result == false); // Just verify it doesn't crash
+        let _ = should_sort_images();
     }
 
     #[test]
     fn test_set_and_read_sorting() {
         // Test round-trip (might fail if no registry access)
         if set_should_sort_images(true).is_ok() {
-            assert_eq!(should_sort_images(), true);
+            assert!(should_sort_images());
         }
 
         if set_should_sort_images(false).is_ok() {
-            assert_eq!(should_sort_images(), false);
+            assert!(!should_sort_images());
         }
 
         // Cleanup: restore to default (sorting disabled for performance)

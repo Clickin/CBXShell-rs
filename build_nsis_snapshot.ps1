@@ -57,21 +57,32 @@ Write-Host "Note: UnRAR support is statically linked via unrar crate" -Foregroun
 Write-Host ""
 
 Write-Host "[1/3] Building Rust project..." -ForegroundColor Yellow
-Push-Location CBXShell
+Push-Location $PSScriptRoot
 
 foreach ($Arch in $ArchitecturesToBuild) {
     $RustTarget = $TargetMap[$Arch]
 
     Write-Host "  Building for $Arch ($RustTarget)..." -ForegroundColor Cyan
     if ($IsRelease) {
-        cargo build --release --target $RustTarget
+        cargo build --release --target $RustTarget -p cbxshell
     }
     else {
-        cargo build --target $RustTarget
+        cargo build --target $RustTarget -p cbxshell
     }
     if ($LASTEXITCODE -ne 0) {
         Pop-Location
-        throw "Cargo build failed for $Arch ($RustTarget)"
+        throw "Cargo build failed for CBXShell ($Arch / $RustTarget)"
+    }
+
+    if ($IsRelease) {
+        cargo build --release --target $RustTarget -p cbxmanager
+    }
+    else {
+        cargo build --target $RustTarget -p cbxmanager
+    }
+    if ($LASTEXITCODE -ne 0) {
+        Pop-Location
+        throw "Cargo build failed for CBXManager ($Arch / $RustTarget)"
     }
 }
 

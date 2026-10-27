@@ -19,12 +19,10 @@
 //!
 //! # Codec choice
 //!
-//! [`JpegPreviewCodec`] is the sanctioned shipping codec (plan section 2.3
-//! fallback): the `image` crate's WebP encoder is lossless-only, and lossy
-//! WebP would require libwebp C bindings — a build/CI constraint for the
-//! x64 + ARM64 shell DLL. JPEG runs on the existing pure-Rust stack.
-//! [`WebpLosslessPreviewCodec`] exists purely as a benchmark comparator and
-//! must not become the default. Final quality tuning still requires
+//! [`WebpLosslessPreviewCodec`] is the shipping codec. The `image` crate's
+//! WebP encoder is lossless-only, and lossy WebP would require libwebp C
+//! bindings — a build/CI constraint for the x64 + ARM64 shell DLL. JPEG is
+//! retained as a benchmark comparator. Final quality tuning still requires
 //! benchmarking with representative comic covers (plan section 2.3).
 
 use crate::utils::error::CbxError;
@@ -42,7 +40,7 @@ pub const PROXY_MAX_DIMENSION: u16 = 1024;
 ///
 /// Bump this when the encode format or quality level changes so that stale
 /// persisted proxies become unreachable and are regenerated.
-pub const CACHE_CODEC_REVISION: u16 = 1;
+pub const CACHE_CODEC_REVISION: u16 = 2;
 
 /// Decoded canonical preview proxy
 ///
@@ -92,7 +90,7 @@ pub trait PreviewCacheCodec {
     fn decode(&self, data: &[u8]) -> Result<DecodedPreview>;
 }
 
-/// JPEG canonical proxy codec (shipping default)
+/// JPEG canonical proxy codec (benchmark comparator)
 ///
 /// Lossy JPEG via the `image` crate's pure-Rust encoder
 /// (`JpegEncoder::new_with_quality`). JPEG has no alpha channel, so alpha is
@@ -138,11 +136,10 @@ impl PreviewCacheCodec for JpegPreviewCodec {
     }
 }
 
-/// Lossless WebP canonical proxy codec (benchmark comparator only)
+/// Lossless WebP canonical proxy codec (shipping default)
 ///
-/// Uses the `image` crate's lossless WebP encoder. Kept solely to compare
-/// size/latency against [`JpegPreviewCodec`] in the codec benchmark; it is
-/// not the shipping default (see the module docs for the rationale).
+/// Uses the `image` crate's lossless WebP encoder for the persisted cache
+/// proxy format.
 #[derive(Debug, Clone, Default)]
 pub struct WebpLosslessPreviewCodec;
 

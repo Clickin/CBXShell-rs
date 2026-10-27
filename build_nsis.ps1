@@ -44,16 +44,22 @@ Write-Host ""
 
 # Step 1: Build Rust project
 Write-Host "[1/3] Building Rust project..." -ForegroundColor Yellow
-Push-Location CBXShell
+Push-Location $PSScriptRoot
 
 foreach ($Arch in $ArchitecturesToBuild) {
     $RustTarget = $TargetMap[$Arch]
 
     Write-Host "  Building for $Arch ($RustTarget)..." -ForegroundColor Cyan
-    cargo build --release --target $RustTarget
+    cargo build --release --target $RustTarget -p cbxshell
     if ($LASTEXITCODE -ne 0) {
         Pop-Location
-        throw "Cargo build failed for $Arch ($RustTarget)"
+        throw "Cargo build failed for CBXShell ($Arch / $RustTarget)"
+    }
+
+    cargo build --release --target $RustTarget -p cbxmanager
+    if ($LASTEXITCODE -ne 0) {
+        Pop-Location
+        throw "Cargo build failed for CBXManager ($Arch / $RustTarget)"
     }
 }
 

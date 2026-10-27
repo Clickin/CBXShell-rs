@@ -5,7 +5,14 @@ All notable changes to CBXShell-rs will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [5.4.0] - 2026-10-27
+
+### Added
+- Persistent per-user thumbnail cache, cache management, and thumbnail regeneration tools.
+
+### Fixed
+- Register the modern thumbnail handler in the installer; persistent debug logging is opt-in.
+- Skip directory junctions and other reparse points during cache maintenance.
 
 ### CI
 - Run only library system tests in the scheduled Windows job, leaving local archive diagnostics opt-in.

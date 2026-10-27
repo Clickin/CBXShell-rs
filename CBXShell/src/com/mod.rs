@@ -1,5 +1,5 @@
+//! COM implementation for CBXShell Windows Shell Extension
 mod cbxshell;
-///! COM implementation for CBXShell Windows Shell Extension
 mod class_factory;
 mod extract_image;
 mod l2_cache;

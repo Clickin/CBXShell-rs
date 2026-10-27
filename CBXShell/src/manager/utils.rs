@@ -1,6 +1,6 @@
-///! Utility functions for CBXManager
-///!
-///! Helper functions for Explorer restart and other operations
+//! Utility functions for CBXManager
+//!
+//! Helper functions for Explorer restart and other operations
 use windows::Win32::UI::WindowsAndMessaging::{
     MessageBoxW, IDYES, MB_ICONERROR, MB_ICONINFORMATION, MB_ICONQUESTION, MB_OK, MB_YESNO,
 };
@@ -42,7 +42,7 @@ pub fn restart_explorer() -> anyhow::Result<()> {
 
     // Kill explorer.exe
     Command::new("taskkill")
-        .args(&["/f", "/im", "explorer.exe"])
+        .args(["/f", "/im", "explorer.exe"])
         .output()
         .map_err(|e| anyhow::anyhow!("Failed to kill Explorer: {}", e))?;
 
