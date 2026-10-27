@@ -9,5 +9,8 @@ rust-version.workspace = true
 [dependencies]
 cbxshell-core.workspace = true
 image.workspace = true
+cbxshell-image-magic.workspace = true
+jxl = "0.8.0"
+moxcms = "0.8.1"
 tracing.workspace = true
 windows.workspace = true

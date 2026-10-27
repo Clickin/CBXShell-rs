@@ -1,3 +1,5 @@
+mod jpeg_xl;
+
 pub use cbxshell_core::utils;
 
 #[path = "../../../CBXShell/src/image_processor/decoder.rs"]

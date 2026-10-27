@@ -14,6 +14,8 @@
 //! - **WebP**: `52 49 46 46 ... 57 45 42 50` (RIFF...WEBP)
 //! - **AVIF**: `... 66 74 79 70 61 76 69 66` (...ftypavif in ftyp box)
 //!
+//! - **JPEG XL**: `FF 0A` codestream or `00 00 00 0C 4A 58 4C 20 0D 0A 87 0A` container
+//!
 //! ## Why Magic Headers?
 //!
 //! Magic header verification provides several benefits over extension-based detection:
@@ -44,6 +46,8 @@ pub enum ImageFormat {
     WebP,
     /// AVIF image (ftyp box with 'avif' brand)
     Avif,
+    /// JPEG XL codestream (FF 0A) or container signature
+    JpegXl,
 }
 
 impl ImageFormat {
@@ -58,6 +62,7 @@ impl ImageFormat {
             Self::Ico => "ICO",
             Self::WebP => "WebP",
             Self::Avif => "AVIF",
+            Self::JpegXl => "JPEG XL",
         }
     }
 }
@@ -83,6 +88,11 @@ impl ImageFormat {
 pub fn detect_image_format(data: &[u8]) -> Result<ImageFormat> {
     if data.is_empty() {
         return Err(CbxError::Image("Empty data".to_string()));
+    }
+
+    // JPEG XL permits a two-byte raw codestream signature, or a 12-byte container.
+    if data.starts_with(b"\xff\x0a") || data.starts_with(b"\x00\x00\x00\x0cJXL \x0d\x0a\x87\x0a") {
+        return Ok(ImageFormat::JpegXl);
     }
 
     // Minimum bytes needed for detection

@@ -50,7 +50,7 @@
 ; Configuration
 
 !define PRODUCT_NAME "CBXShell-rs"
-!define PRODUCT_VERSION "5.2.0"
+!define PRODUCT_VERSION "5.3.2"
 !define PRODUCT_WEB_SITE "https://github.com/Clickin/CBXShell-rs"
 !define PRODUCT_UNINST_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${PRODUCT_NAME}"
 !define PRODUCT_UNINST_ROOT_KEY "HKLM"

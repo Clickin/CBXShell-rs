@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       tag_name:
-        description: "Release tag (e.g. v5.1.2)"
+        description: "Release tag (e.g. v5.3.0)"
         required: true
         type: string
       prerelease:
@@ -35,11 +35,32 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag_name) || github.ref }}
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
+
+      - name: Verify release versions
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $metadataJson = cargo metadata --locked --no-deps --format-version 1
+          if ($LASTEXITCODE -ne 0) { throw "Cargo metadata failed" }
+          $metadata = $metadataJson | ConvertFrom-Json
+          $versions = @($metadata.packages | Where-Object { $_.id -in $metadata.workspace_members } | Select-Object -ExpandProperty version -Unique)
+          if ($versions.Count -ne 1 -or "v$($versions[0])" -cne $env:RELEASE_TAG) {
+            throw "Release tag $env:RELEASE_TAG does not match workspace versions: $versions"
+          }
+          $installer = Get-Content installer.nsi -Raw
+          $match = [regex]::Match($installer, '(?m)^!define PRODUCT_VERSION "([^"]+)"')
+          if (-not $match.Success -or $match.Groups[1].Value -cne $versions[0]) {
+            throw "Installer version does not match Cargo version"
+          }
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -57,12 +78,31 @@ jobs:
           $makensis = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
 
           if (-not $makensis) {
-            if (-not (Get-Command choco -ErrorAction SilentlyContinue)) {
-              throw "Chocolatey is not available on the runner, and NSIS is not preinstalled"
+            # Portable NSIS avoids Chocolatey feed outages. Pin and verify every download.
+            $nsisRoot = Join-Path $env:RUNNER_TEMP "nsis-portable"
+            $nsisZip = Join-Path $env:RUNNER_TEMP "nsis-3.11.zip"
+            $expectedHash = "c7d27f780ddb6cffb4730138cd1591e841f4b7edb155856901cdf5f214394fa1"
+            $urls = @(
+              "https://downloads.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11.zip",
+              "http://downloads.sourceforge.net/project/nsis/NSIS%203/3.11/nsis-3.11.zip"
+            )
+            $downloaded = $false
+            foreach ($url in $urls) {
+              try {
+                & curl.exe --fail --location --silent --show-error --max-time 60 --output $nsisZip $url
+                if ($LASTEXITCODE -ne 0) { throw "curl download exited with $LASTEXITCODE" }
+                if ((Get-FileHash -LiteralPath $nsisZip -Algorithm SHA256).Hash -ne $expectedHash) {
+                  throw "NSIS archive SHA256 mismatch (possibly a mirror HTML response)"
+                }
+                $downloaded = $true
+                break
+              } catch {
+                Write-Warning "NSIS download failed from ${url}: $($_.Exception.Message)"
+              }
             }
-
-            choco install nsis --yes --no-progress
-            $makensis = $candidatePaths | Where-Object { Test-Path -LiteralPath $_ } | Select-Object -First 1
+            if (-not $downloaded) { throw "Cannot download pinned NSIS distribution" }
+            Expand-Archive -LiteralPath $nsisZip -DestinationPath $nsisRoot -Force
+            $makensis = Join-Path $nsisRoot "nsis-3.11/makensis.exe"
           }
 
           if (-not $makensis -or -not (Test-Path -LiteralPath $makensis)) {
@@ -71,8 +111,12 @@ jobs:
 
           "NSIS_EXE=$makensis" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
+      - name: Run workspace tests
+        if: matrix.arch == 'x64'
+        run: cargo test --locked --workspace --target x86_64-pc-windows-msvc
+
       - name: Build release binaries
-        run: cargo build --release --target ${{ matrix.rust_target }}
+        run: cargo build --locked --release --target ${{ matrix.rust_target }}
 
       - name: Create dist directory
         shell: pwsh
@@ -83,6 +127,20 @@ jobs:
         shell: pwsh
         run: |
           & "$env:NSIS_EXE" "/DARCH=${{ matrix.arch }}" "installer.nsi"
+
+      - name: Verify packaged manager resources and startup
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $installers = @(Get-ChildItem "dist/CBXShell-rs-Setup-*-${{ matrix.arch }}.exe")
+          if ($installers.Count -ne 1) { throw "Expected exactly one installer" }
+          $staging = Join-Path $env:RUNNER_TEMP ("cbxmanager-smoke-" + [guid]::NewGuid())
+          7z x $installers[0].FullName "-o$staging" cbxmanager.exe cbxshell.dll -y
+          if ($LASTEXITCODE -ne 0) { throw "Installer extraction failed" }
+          $packagedManager = Join-Path $staging "cbxmanager.exe"
+          $builtHash = (Get-FileHash "target/${{ matrix.rust_target }}/release/cbxmanager.exe").Hash
+          if ((Get-FileHash $packagedManager).Hash -ne $builtHash) { throw "Packaged manager differs from built executable" }
+          ./scripts/test-manager-startup.ps1 -Executable $packagedManager -ResourceOnly:('${{ matrix.arch }}' -eq 'ARM64')
 
       - name: Upload installer artifact
         if: ${{ github.actor != 'nektos/act' }}
@@ -107,6 +165,11 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      - name: Checkout release notes
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && format('refs/tags/{0}', inputs.tag_name) || github.ref }}
+
       - name: Download installer artifacts
         uses: actions/download-artifact@v4
         with:
@@ -116,8 +179,10 @@ jobs:
 
       - name: Prepare bilingual release template
         shell: pwsh
+        env:
+          REQUESTED_RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}
         run: |
-          $Tag = "${{ github.event_name == 'workflow_dispatch' && inputs.tag_name || github.ref_name }}"
+          $Tag = $env:REQUESTED_RELEASE_TAG
           Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_TAG=$Tag"
           Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_NAME_EN=CBXShell-rs $Tag"
           Add-Content -Path $env:GITHUB_ENV -Value "RELEASE_NAME_KO=CBXShell-rs $Tag 릴리즈"

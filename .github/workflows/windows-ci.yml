@@ -65,11 +65,16 @@ jobs:
 
       - name: Cargo build (release)
         if: env.ACT != 'true'
-        run: cargo build --release --target ${{ matrix.rust_target }}
+        run: cargo build --locked --release --target ${{ matrix.rust_target }}
+
+      - name: Verify manager resources and startup
+        if: env.ACT != 'true'
+        shell: pwsh
+        run: ./scripts/test-manager-startup.ps1 -Executable "target/${{ matrix.rust_target }}/release/cbxmanager.exe" -ResourceOnly:('${{ matrix.arch }}' -eq 'ARM64')
 
       - name: Cargo test (host x64 only)
         if: matrix.run_tests && env.ACT != 'true'
-        run: cargo test --target ${{ matrix.rust_target }} --workspace
+        run: cargo test --locked --target ${{ matrix.rust_target }} --workspace
 
   system-tests:
     name: Windows System Tests (x64)
@@ -107,7 +112,7 @@ jobs:
         shell: pwsh
         run: |
           if ($env:ACT -eq 'true') {
-            rustup run stable cargo test --target x86_64-pc-windows-msvc --package cbxshell --features e2e-windows --lib --tests -- --ignored --test-threads=1
+            rustup run stable cargo test --locked --target x86_64-pc-windows-msvc --package cbxshell --features e2e-windows --lib -- --ignored --test-threads=1
           } else {
-            cargo test --target x86_64-pc-windows-msvc --package cbxshell --features e2e-windows --lib --tests -- --ignored --test-threads=1
+            cargo test --locked --target x86_64-pc-windows-msvc --package cbxshell --features e2e-windows --lib -- --ignored --test-threads=1
           }

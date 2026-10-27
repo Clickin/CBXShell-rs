@@ -1,6 +1,8 @@
 //! Image decoding from raw bytes
 //!
 //! Uses a hybrid decoding strategy:
+//! JPEG XL uses the bundled Rust decoder (first frame, sRGB RGBA8).
+//! Other formats use:
 //! 1. Windows WIC decoder first (uses OS codecs when available)
 //! 2. Fallback to Rust `image` crate decoder
 //!
@@ -67,9 +69,10 @@ impl DecodedRgbaImage {
 /// ```
 pub fn decode_image(data: &[u8]) -> Result<DynamicImage> {
     let decoded = decode_rgba_image(data)?;
-    let image = ImageBuffer::from_raw(decoded.width, decoded.height, decoded.pixels).ok_or_else(
-        || CbxError::Image("Decoded image had unexpected pixel buffer size".to_string()),
-    )?;
+    let image =
+        ImageBuffer::from_raw(decoded.width, decoded.height, decoded.pixels).ok_or_else(|| {
+            CbxError::Image("Decoded image had unexpected pixel buffer size".to_string())
+        })?;
 
     Ok(DynamicImage::ImageRgba8(image))
 }
@@ -77,6 +80,13 @@ pub fn decode_image(data: &[u8]) -> Result<DynamicImage> {
 pub fn decode_rgba_image(data: &[u8]) -> Result<DecodedRgbaImage> {
     if data.is_empty() {
         return Err(CbxError::Image("Empty image data".to_string()));
+    }
+
+    if matches!(
+        cbxshell_image_magic::detect_image_format(data),
+        Ok(cbxshell_image_magic::ImageFormat::JpegXl)
+    ) {
+        return crate::jpeg_xl::decode(data);
     }
 
     debug_log(&format!(
