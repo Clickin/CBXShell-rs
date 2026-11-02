@@ -111,13 +111,12 @@ impl CBXShell {
     ///
     /// 1. Normalize the requested size (`cx == 0` -> 256)
     /// 2. Read the sort preference (part of the L2 cache variant identity)
-    /// 3. Resolve the source identity and attempt an L2 cache hit — on a
-    ///    hit the canonical proxy is decoded and resized to `cx` with no
-    ///    archive open and no archive read at all
+    /// 3. Resolve the source identity and attempt an L2 cache hit. An
+    ///    unnamed ZIP stream reads its selected image to establish identity.
     /// 4. On miss or bypass: open the archive (RAR path special-case with
     ///    stream fallback), find the first image, extract and verify it
-    /// 5. Render the canonical proxy, persist it best-effort, and derive
-    ///    the returned HBITMAP from it
+    /// 5. Render the canonical proxy, queue best-effort persistence, and
+    ///    derive the returned HBITMAP from it
     /// 6. Fall back to the legacy decode-and-resize path whenever canonical
     ///    rendering fails, so extraction never regresses
     ///
@@ -322,6 +321,9 @@ impl CBXShell {
         // Step 6: Extract image data
         crate::utils::debug_log::debug_log("Step 6: Extracting image data...");
         let image_data = archive.extract_entry(&entry)?;
+        // Release the reader's reference before rendering and cache I/O.
+        // The initialized COM object may still hold the original stream.
+        drop(archive);
         tracing::debug!("Extracted {} bytes of image data", image_data.len());
         crate::utils::debug_log::debug_log(&format!(
             "Step 6: Extracted {} bytes of image data",
@@ -333,42 +335,14 @@ impl CBXShell {
         crate::archive::verify_image_data(&image_data, &entry.name)?;
         crate::utils::debug_log::debug_log("Step 6b: Image format verification passed");
 
-        // === Canonical proxy persistence + requested-size HBITMAP
-        // (plan section 8, miss-path steps 8b-8e) ===
-        let hbitmap = if let Some((cache, identity, variant)) = l2.as_ref() {
+        // Render before returning, but never wait for cache encoding or writes.
+        let hbitmap = if let Some((cache, identity, variant)) = l2 {
             crate::utils::debug_log::debug_log("Rendering canonical L2 proxy...");
             match render_canonical_proxy(&image_data) {
                 Ok(canonical) => {
-                    // Best-effort persistence: store failures never affect
-                    // the extraction result (plan goal 10).
-                    match l2_cache::encode_proxy(canonical.width, canonical.height, &canonical.rgba)
-                    {
-                        Ok(encoded) => match cache.store(identity, variant, &encoded) {
-                            Ok(()) => crate::utils::debug_log::debug_log(&format!(
-                                "L2 CACHE STORE (source={}, proxy={}x{}, bytes={})",
-                                l2_cache::source_id_tag(identity),
-                                canonical.width,
-                                canonical.height,
-                                encoded.len()
-                            )),
-                            Err(e) => crate::utils::debug_log::debug_log(&format!(
-                                "L2 CACHE STORE FAILED: {}",
-                                e
-                            )),
-                        },
-                        Err(e) => {
-                            crate::utils::debug_log::debug_log(&format!(
-                                "L2 CACHE STORE FAILED: {}",
-                                e
-                            ));
-                        }
-                    }
-
-                    // Derive the requested size from the canonical proxy
-                    // exactly like the cache-hit path does.
                     let proxy =
                         DecodedPreview::new(canonical.width, canonical.height, canonical.rgba);
-                    match l2_cache::proxy_to_hbitmap(&proxy, cx) {
+                    let bitmap = match l2_cache::proxy_to_hbitmap(&proxy, cx) {
                         Ok(bmp) => bmp,
                         Err(e) => {
                             crate::utils::debug_log::debug_log(&format!(
@@ -377,7 +351,9 @@ impl CBXShell {
                             ));
                             Self::create_thumbnail_legacy(&image_data, cx)?
                         }
-                    }
+                    };
+                    super::cache_writer::queue(cache, identity, variant, proxy);
+                    bitmap
                 }
                 Err(e) => {
                     crate::utils::debug_log::debug_log(&format!(

@@ -1,4 +1,5 @@
 //! COM implementation for CBXShell Windows Shell Extension
+mod cache_writer;
 mod cbxshell;
 mod class_factory;
 mod extract_image;

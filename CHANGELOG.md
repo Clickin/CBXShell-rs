@@ -11,6 +11,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Persistent per-user thumbnail cache, cache management, and thumbnail regeneration tools.
 
 ### Fixed
+- Publish thumbnail cache entries on bounded background workers instead of blocking thumbnail returns on WebP encoding and disk flushes.
 - Register the modern thumbnail handler in the installer; persistent debug logging is opt-in.
 - Skip directory junctions and other reparse points during cache maintenance.
 

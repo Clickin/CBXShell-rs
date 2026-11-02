@@ -48,6 +48,8 @@ CLAUDE.md
 # AI-generated documentation (Claude Code reports)
 /aidocs/
 /.sisyphus
+/.omx/
+/.tmp/
 /.worktrees
 /CBXShell/target-dev
 nul

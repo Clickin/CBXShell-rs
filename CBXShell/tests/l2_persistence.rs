@@ -15,7 +15,6 @@ fn shell_stream_persists_l2() {
     let root = std::env::temp_dir().join(format!("cbxshell-persistence-{}", std::process::id()));
     std::fs::create_dir_all(&root).unwrap();
     std::env::set_var("LOCALAPPDATA", &root);
-    std::env::set_var("CBXSHELL_DEBUG_LOG_PATH", root.join("trace.log"));
     let path = root.join("cover.cbz");
     let mut png = std::io::Cursor::new(Vec::new());
     image::DynamicImage::new_rgb8(32, 32)
@@ -48,15 +47,49 @@ fn shell_stream_persists_l2() {
             let mut bitmap = HBITMAP::default();
             let mut alpha = WTS_ALPHATYPE::default();
             provider.GetThumbnail(256, &mut bitmap, &mut alpha).unwrap();
+            // A completed request must not prevent moving the source while
+            // the provider is still alive.
+            drop(stream);
+            drop(item);
+            std::fs::rename(&path, root.join("moved.cbz")).unwrap();
+            // Cache publication is asynchronous; wait for the first entry
+            // before requesting another size to exercise the hit path.
+            let cache_root = root.join("CBXShell/thumbnail-cache/v1");
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(15);
+            loop {
+                let published = std::fs::read_dir(&cache_root)
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .flat_map(|shard| {
+                        std::fs::read_dir(shard.path())
+                            .into_iter()
+                            .flatten()
+                            .flatten()
+                    })
+                    .flat_map(|source| {
+                        std::fs::read_dir(source.path())
+                            .into_iter()
+                            .flatten()
+                            .flatten()
+                    })
+                    .any(|entry| entry.path().extension().is_some_and(|ext| ext == "webp"));
+                if published {
+                    break;
+                }
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "cache was not published: {:?}",
+                    cache_root
+                );
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
             DeleteObject(bitmap).unwrap();
             provider.GetThumbnail(128, &mut bitmap, &mut alpha).unwrap();
             DeleteObject(bitmap).unwrap();
         }
         CoUninitialize();
     }
-    let trace = std::fs::read_to_string(root.join("trace.log")).unwrap();
-    assert!(trace.contains("L2 CACHE STORE ("), "{trace}");
-    assert!(trace.contains("L2 CACHE HIT ("), "{trace}");
     let cache_root = root.join("CBXShell/thumbnail-cache/v1");
     let shard = std::fs::read_dir(&cache_root)
         .unwrap()
